@@ -16,9 +16,8 @@ A Python program that uploads files to GoFile.io with progress tracking, logging
 - File tracking system with detailed upload history
 - Rotating log files with size management
 
-## Important Note
-
-**This tool works exclusively with temporary GoFile accounts** which expire after a period of inactivity. Files uploaded using this tool will not be permanently stored and may become inaccessible after the temporary account expires. This tool is not intended for long-term file storage.
+> **Important Note**  
+> This tool works exclusively with temporary GoFile accounts which expire after a period of inactivity. Files uploaded using this tool will not be permanently stored and may become inaccessible after the temporary account expires. This tool is not intended for long-term file storage.
 
 ## TODOs
 
@@ -28,7 +27,8 @@ A Python program that uploads files to GoFile.io with progress tracking, logging
 - [x] Category-based folder management
 - [x] File tracking system
 - [ ] Automatic retry on failed uploads
-- [ ] Custom expiration date notifications
+- [ ] Save the minimum expiration date of files
+- [ ] Send expiration date notifications
 
 ## Requirements
 
