@@ -357,8 +357,12 @@ def main():
                 print(f"Download link: {download_link}")
                 print("-" * 50)
 
+        except KeyboardInterrupt:
+            logger.warning(f"Upload of {file_path} cancelled by user")
+            return
         except Exception as e:
-            print(f"Error uploading {file_path}: {str(e)}")
+            logger.error(f"Error uploading {file_path}", exc_info=True)
+            logger.error(f"{e}")
 
 
 if __name__ == "__main__":

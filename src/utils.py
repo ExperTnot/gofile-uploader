@@ -108,17 +108,17 @@ def create_progress_bar(file_path: str, desc: str = None) -> tqdm:
 
 def upload_with_progress(file_path: str, upload_func, desc: str = None):
     """
-    Upload a file with progress tracking using requests-toolbelt for network upload progress.
+    Upload a file with progress tracking and frequent interrupt checks.
 
     Args:
         file_path: Path to the file to upload
-        upload_func: A function that takes a function to monitor upload progress
+        upload_func: A function that handles the actual upload with the signature:
+                    upload_func(file_obj, file_name, form_data, chunk_size, interrupt_check_func)
         desc: Description for the progress bar
 
     Returns:
         The result of the upload function
     """
-    from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
 
     start_time = time.time()
     file_size = os.path.getsize(file_path)
@@ -136,20 +136,19 @@ def upload_with_progress(file_path: str, upload_func, desc: str = None):
         bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
     ) as pbar:
         # Store last read position to avoid progress bar jumps
-        last_position = 0
-
+        last_position = [0]
+        
         # This callback is called during upload to update progress
-        def progress_callback(monitor):
-            nonlocal last_position
-            # Get current bytes sent over the network
-            bytes_read = monitor.bytes_read
-
+        def progress_callback(current_bytes):
+            # Get current bytes processed
+            bytes_read = current_bytes
+            
             # Ensure we never go backwards or beyond total
-            if bytes_read > last_position and bytes_read <= file_size:
+            if bytes_read > last_position[0] and bytes_read <= file_size:
                 # Update progress bar by the difference
-                pbar.update(bytes_read - last_position)
-                last_position = bytes_read
-
+                pbar.update(bytes_read - last_position[0])
+                last_position[0] = bytes_read
+                
                 # Update speed display
                 elapsed = time.time() - start_time
                 if elapsed > 0:
@@ -158,28 +157,61 @@ def upload_with_progress(file_path: str, upload_func, desc: str = None):
 
         # Ensure we close with the bar at 100%
         def ensure_completion():
-            if pbar.n < file_size:
+            # Only update if not interrupted
+            if pbar.n < file_size and not getattr(pbar, "_interrupted", False):
                 pbar.update(file_size - pbar.n)
 
-        # Create a MultipartEncoder for the file upload
-        with open(file_path, "rb") as file_data:
-            # Create encoder
-            encoder = MultipartEncoder(
-                {"file": (file_name, file_data, "application/octet-stream")}
-            )
-
-            # Create a monitor for the encoder that will call our progress callback
-            monitor = MultipartEncoderMonitor(encoder, progress_callback)
-
-            # Let the upload function handle the actual POST request using our monitor
-            try:
-                result = upload_func(monitor, encoder.content_type)
+        # Implement a modified approach that allows more frequent interrupt checks
+        # We'll set a small chunk size for reading the file to allow more frequent interrupt checks
+        CHUNK_SIZE = 10 * 1024 * 1024  # 10MB chunks
+        
+        try:
+            # Function to check for interrupt periodically
+            def check_for_interrupt():
+                # This provides a hook point for keyboard interrupts to be processed
+                time.sleep(0)  # Yield to the event loop briefly
+            
+            # Open the file and prepare for chunked upload
+            with open(file_path, "rb") as file_data:
+                # Create the initial request data
+                form_data = {}
+                
+                # Create a wrapper for the progress callback
+                def update_progress(bytes_read):
+                    progress_callback(bytes_read)
+                    # Check for interrupt after each progress update
+                    check_for_interrupt()
+                
+                # Prepare the upload with progress tracking
+                result = upload_func(file_data, file_name, form_data, CHUNK_SIZE, update_progress)
+                
                 # Ensure progress bar completes to 100%
                 ensure_completion()
-            except Exception:
-                # Ensure progress bar completes even if there's an error
-                ensure_completion()
-                raise
+                
+        except KeyboardInterrupt:
+            # Handle keyboard interrupt (Ctrl+C) gracefully
+            # Mark as interrupted to avoid completion message
+            setattr(pbar, "_interrupted", True)
+            
+            # Clear the progress bar line completely to prevent duplicate display
+            pbar.clear()
+            
+            # Disable the progress bar to prevent further output
+            pbar.disable = True
+            
+            # Close without additional messages
+            pbar.close()
+            
+            # Re-raise the interrupt for the main handler
+            raise
+        except Exception as e:
+            # Log the specific exception
+            import traceback
+            pbar.write(f"\nError during upload: {str(e)}")
+            pbar.write(traceback.format_exc())
+            # Ensure progress bar is properly closed
+            pbar.close()
+            raise
 
     # Calculate and return final stats
     elapsed_time = time.time() - start_time
