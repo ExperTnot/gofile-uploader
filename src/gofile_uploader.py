@@ -11,7 +11,7 @@ import os
 import json
 import argparse
 import mimetypes
-from datetime import datetime
+from datetime import datetime, timedelta
 from .gofile_client import GoFileClient
 from .db_manager import DatabaseManager
 from .logging_utils import setup_logging, get_logger
@@ -181,13 +181,42 @@ def main():
 
             # Format upload time
             upload_time = file.get("upload_time", "")
+            upload_dt = None
             if "T" in upload_time:
                 try:
-                    dt = datetime.fromisoformat(upload_time)
-                    upload_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+                    upload_dt = datetime.fromisoformat(upload_time)
+                    upload_time = upload_dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception as e:
-                    logger.debug(f"Error formatting date: {e}")
-
+                    logger.debug(f"Error formatting upload date: {e}")
+            
+            # Calculate expiry status
+            expiry_status = "Unknown"
+            expiry_date = file.get("expiry_date", "")
+            
+            if "T" in expiry_date:
+                try:
+                    expiry_dt = datetime.fromisoformat(expiry_date)
+                    now = datetime.now()
+                    
+                    # Calculate days left
+                    if expiry_dt < now:
+                        expiry_status = "EXPIRED"
+                    else:
+                        days_left = (expiry_dt - now).days
+                        if days_left <= 2:
+                            expiry_status = f"EXPIRES SOON ({days_left} days)"
+                        else:
+                            expiry_status = expiry_dt.strftime("%Y-%m-%d")
+                except Exception as e:
+                    logger.debug(f"Error formatting expiry date: {e}")
+            elif not expiry_date and upload_dt:
+                # If we have no expiry date but have upload date, calculate it
+                try:
+                    expiry_dt = upload_dt + timedelta(days=14)
+                    expiry_status = expiry_dt.strftime("%Y-%m-%d")
+                except Exception as e:
+                    logger.debug(f"Error calculating expiry date: {e}")
+                    
             # Create formatted entry
             formatted_files.append(
                 {
@@ -195,6 +224,7 @@ def main():
                     "category": file.get("category") or "",
                     "size": size_str,
                     "upload_time": upload_time,
+                    "expiry": expiry_status,
                     "download_link": file.get("download_link", ""),
                 }
             )
@@ -205,6 +235,7 @@ def main():
             "category": "Category",
             "size": "Size",
             "upload_time": "Upload Date",
+            "expiry": "Expires On",
             "download_link": "Download Link",
         }
 
@@ -248,7 +279,8 @@ def main():
 
             # Upload the file to the specified folder (if any)
             response_data = client.upload_file(file_path, folder_id=folder_id)
-
+            
+            # If we reach this point, the upload was successful
             # Calculate upload duration
             duration_seconds = (datetime.now() - start_time).total_seconds()
 
@@ -298,72 +330,87 @@ def main():
                 }
                 db_manager.save_folder_for_category(args.category, folder_info)
 
-            # Save detailed file information to the database
-            file_size = os.path.getsize(file_path)
-            file_name = os.path.basename(file_path)
-            mime_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
-
-            # Calculate upload speed (bytes per second)
-            file_size = os.path.getsize(file_path)
-            upload_speed_bps = (
-                file_size / duration_seconds if duration_seconds > 0 else 0.0
-            )
-
-            # Save file information to the database
-            file_info = {
-                "id": file_id,
-                "name": file_name,
-                "size": file_size,
-                "mime_type": mime_type,
-                "upload_time": datetime.now().isoformat(),
-                "download_link": download_link,
-                "folder_id": new_folder_id or folder_id,
-                "folder_code": folder_code,
-                "category": args.category,
-                "account_id": guest_account or guest_token,
-                "upload_speed": upload_speed_bps,
-                "upload_duration": duration_seconds,
-            }
-
-            db_manager.save_file_info(file_info)
-
-            # Add entry to log file - use the same log file pattern as the rotating handler
-            log_file = os.path.join(
-                config["log_folder"], f"{config['log_basename']}_0.log"
-            )
-            with open(log_file, "a") as log:
-                log_entry = {
-                    "timestamp": datetime.now().isoformat(),
-                    "filename": os.path.basename(file_path),
-                    "filesize": os.path.getsize(file_path),
-                    "filesize_formatted": response_data.get("file_size_formatted", ""),
-                    "upload_speed": response_data.get("speed_formatted", ""),
+            # Only proceed with file info storage if we have a valid download link and file ID
+            # This ensures the upload truly succeeded
+            if download_link and file_id:
+                # Save detailed file information to the database
+                file_size = os.path.getsize(file_path)
+                file_name = os.path.basename(file_path)
+                mime_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+    
+                # Calculate upload speed (bytes per second)
+                file_size = os.path.getsize(file_path)
+                upload_speed_bps = (
+                    file_size / duration_seconds if duration_seconds > 0 else 0.0
+                )
+    
+                # Calculate expiry date (14 days from upload)
+                upload_time = datetime.now()
+                expiry_date = upload_time + timedelta(days=14)
+                
+                # Save file information to the database
+                file_info = {
+                    "id": file_id,
+                    "name": file_name,
+                    "size": file_size,
+                    "mime_type": mime_type,
+                    "upload_time": upload_time.isoformat(),
+                    "expiry_date": expiry_date.isoformat(),
                     "download_link": download_link,
-                    "file_id": file_id,
-                    "folder_id": response_data.get(
-                        "folder_id", response_data.get("parentFolder", "")
-                    ),
+                    "folder_id": new_folder_id or folder_id,
+                    "folder_code": folder_code,
                     "category": args.category,
+                    "account_id": guest_account or guest_token,
+                    "upload_speed": upload_speed_bps,
+                    "upload_duration": duration_seconds,
                 }
-                log.write(json.dumps(log_entry) + "\n")
-
-            # Print information to the console
-            if not args.quiet:
-                print(f"\nFile: {os.path.basename(file_path)}")
-                if args.category:
-                    print(f"Category: {args.category}")
-                print(f"Size: {response_data.get('file_size_formatted', '')}")
-                print(f"Upload speed: {response_data.get('speed_formatted', '')}")
-                print(f"Download link: {download_link}")
-                print("-" * 50)
+    
+                # Only add to database if upload was complete
+                db_manager.save_file_info(file_info)
+    
+                # Add entry to log file - use the same log file pattern as the rotating handler
+                log_file = os.path.join(
+                    config["log_folder"], f"{config['log_basename']}_0.log"
+                )
+                with open(log_file, "a") as log:
+                    log_entry = {
+                        "timestamp": datetime.now().isoformat(),
+                        "filename": os.path.basename(file_path),
+                        "filesize": os.path.getsize(file_path),
+                        "filesize_formatted": response_data.get("file_size_formatted", ""),
+                        "upload_speed": response_data.get("speed_formatted", ""),
+                        "download_link": download_link,
+                        "file_id": file_id,
+                        "folder_id": response_data.get(
+                            "folder_id", response_data.get("parentFolder", "")
+                        ),
+                        "category": args.category,
+                    }
+                    log.write(json.dumps(log_entry) + "\n")
+    
+                # Print information to the console
+                if not args.quiet:
+                    print(f"\nFile: {os.path.basename(file_path)}")
+                    if args.category:
+                        print(f"Category: {args.category}")
+                    print(f"Size: {response_data.get('file_size_formatted', '')}")
+                    print(f"Upload speed: {response_data.get('speed_formatted', '')}")
+                    print(f"Download link: {download_link}")
+                    print(f"Expires on: {expiry_date.strftime('%Y-%m-%d')}")
+                    print("-" * 50)
+            else:
+                # Somehow we got a response but no valid download link or file ID
+                logger.warning(f"Upload of {file_path} received incomplete data from server")
+                print(f"Warning: Upload may not have completed successfully for {os.path.basename(file_path)}")
 
         except KeyboardInterrupt:
             logger.warning(f"Upload of {file_path} cancelled by user")
+            # Do NOT add to database - return immediately
             return
         except Exception as e:
             logger.error(f"Error uploading {file_path}", exc_info=True)
             logger.error(f"{e}")
-
+            print(f"Error uploading: {str(e)}")
 
 if __name__ == "__main__":
     main()

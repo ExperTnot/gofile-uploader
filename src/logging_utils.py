@@ -4,8 +4,9 @@ Logging utilities for the GoFile uploader.
 Provides a rotating file logger with console output.
 """
 
-import sys
+import os
 import logging
+import sys
 from logging.handlers import RotatingFileHandler
 
 def setup_logging(log_folder='.', log_basename='gofile', max_bytes=5*1024*1024, backup_count=10, verbose=False):
@@ -30,7 +31,7 @@ def setup_logging(log_folder='.', log_basename='gofile', max_bytes=5*1024*1024, 
     logger.handlers = []
     
     # Rotating file handler - logs everything to file with rotation
-    import os
+
     log_file = os.path.join(log_folder, f"{log_basename}_0.log")
     file_handler = RotatingFileHandler(
         log_file,
