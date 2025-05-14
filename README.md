@@ -1,6 +1,6 @@
 # GoFile Uploader
 
-A Python program that uploads files to GoFile.io with progress tracking, logging, and category-based folder management.
+A Python program that uploads files to GoFile.io with progress tracking, logging, and category-based folder management. **This tool is designed specifically for temporary GoFile accounts only.**
 
 ## Features
 
@@ -15,6 +15,20 @@ A Python program that uploads files to GoFile.io with progress tracking, logging
 - Persistent storage of categories, folders, and guest account information in SQLite database
 - File tracking system with detailed upload history
 - Rotating log files with size management
+
+## Important Note
+
+**This tool works exclusively with temporary GoFile accounts** which expire after a period of inactivity. Files uploaded using this tool will not be permanently stored and may become inaccessible after the temporary account expires. This tool is not intended for long-term file storage.
+
+## TODOs
+
+- [x] Basic file upload functionality
+- [x] Progress tracking with tqdm
+- [x] SQLite database integration
+- [x] Category-based folder management
+- [x] File tracking system
+- [ ] Automatic retry on failed uploads
+- [ ] Custom expiration date notifications
 
 ## Requirements
 
@@ -38,34 +52,34 @@ pip install -r requirements.txt
 
 ```bash
 # Upload a single file
-python gofile.py /path/to/your/file.ext
+python gofile_uploader.py /path/to/your/file.ext
 
 # Upload multiple files
-python gofile.py /path/to/file1.ext /path/to/file2.ext
+python gofile_uploader.py /path/to/file1.ext /path/to/file2.ext
 
 # Upload files to a specific category (folder)
-python gofile.py -c Photos /path/to/photo1.jpg /path/to/photo2.jpg
+python gofile_uploader.py -c Photos /path/to/photo1.jpg /path/to/photo2.jpg
 
 # List all available categories
-python gofile.py -l
+python gofile_uploader.py -l
 
 # Upload more files to an existing category
-python gofile.py -c Photos /path/to/more_photos/*.jpg
+python gofile_uploader.py -c Photos /path/to/more_photos/*.jpg
 
 # Suppress summary output
-python gofile.py -q /path/to/your/file.ext
+python gofile_uploader.py -q /path/to/your/file.ext
 
 # Show verbose output
-python gofile.py -v /path/to/your/file.ext
+python gofile_uploader.py -v /path/to/your/file.ext
 
 # List all uploaded files
-python gofile.py -lf
+python gofile_uploader.py -lf
 
 # List files from a specific category
-python gofile.py -lf Photos
+python gofile_uploader.py -lf Photos
 
 # Remove a category (with confirmation)
-python gofile.py -rm Photos
+python gofile_uploader.py -rm Photos
 ```
 
 ## Configuration
@@ -90,8 +104,8 @@ gofile-auto/
 │   └── gofile.db        # SQLite database file
 ├── logs/                # Log files directory
 │   ├── gofile_0.log     # Current log file
-│   ├── gofile_0.log.1   # Backup log file 1
-│   └── gofile_0.log.2   # Backup log file 2
+│   ├── gofile_1.log     # Backup log file 1
+│   └── gofile_2.log     # Backup log file 2
 ├── src/                 # Source code directory
 │   ├── main.py          # Core application logic
 │   ├── gofile_client.py # API client implementation
