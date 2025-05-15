@@ -26,9 +26,12 @@ A Python program that uploads files to GoFile.io with progress tracking, logging
 - [x] SQLite database integration
 - [x] Category-based folder management
 - [x] File tracking system
+- [x] File expiry tracking (hardcoded 14 days from upload which his minimum expiration time)
+- [x] Database entry deletion functionality
+- [x] Sortable file listings
 - [ ] Automatic retry on failed uploads
-- [ ] Save the minimum expiration date of files
 - [ ] Send expiration date notifications
+- [ ] Pagination for large file listings
 
 ## Requirements
 
@@ -52,34 +55,50 @@ pip install -r requirements.txt
 
 ```bash
 # Upload a single file
-python gofile_uploader.py /path/to/your/file.ext
+python gofile-uploader.py /path/to/your/file.ext
 
 # Upload multiple files
-python gofile_uploader.py /path/to/file1.ext /path/to/file2.ext
+python gofile-uploader.py /path/to/file1.ext /path/to/file2.ext
 
 # Upload files to a specific category (folder)
-python gofile_uploader.py -c Photos /path/to/photo1.jpg /path/to/photo2.jpg
+python gofile-uploader.py -c Photos /path/to/photo1.jpg /path/to/photo2.jpg
 
 # List all available categories
-python gofile_uploader.py -l
+python gofile-uploader.py -l
 
 # Upload more files to an existing category
-python gofile_uploader.py -c Photos /path/to/more_photos/*.jpg
+python gofile-uploader.py -c Photos /path/to/more_photos/*.jpg
 
 # Suppress summary output
-python gofile_uploader.py -q /path/to/your/file.ext
+python gofile-uploader.py -q /path/to/your/file.ext
 
 # Show verbose output
-python gofile_uploader.py -v /path/to/your/file.ext
+python gofile-uploader.py -v /path/to/your/file.ext
 
-# List all uploaded files
-python gofile_uploader.py -lf
+# List all uploaded files (now with expiry date information)
+python gofile-uploader.py -lf
 
 # List files from a specific category
-python gofile_uploader.py -lf Photos
+python gofile-uploader.py -lf Photos
 
-# Remove a category (with confirmation)
-python gofile_uploader.py -rm Photos
+# Sort file listings by various criteria
+python gofile-uploader.py -lf -s name     # Sort by filename
+python gofile-uploader.py -lf -s size     # Sort by file size
+python gofile-uploader.py -lf -s date     # Sort by upload date
+python gofile-uploader.py -lf -s expiry   # Sort by expiry date
+python gofile-uploader.py -lf -s category # Sort by category
+python gofile-uploader.py -lf -s link     # Sort by download link
+
+# Change sort order (default is ascending)
+python gofile-uploader.py -lf -s size -o desc  # Sort by size in descending order
+
+# Delete a file entry from the database
+python gofile-uploader.py -df filename.ext   # Delete by filename
+python gofile-uploader.py -df 1              # Delete by serial ID
+python gofile-uploader.py -df abc123-456     # Delete by file ID
+
+# Remove a category (with confirmation) . Does not remove files from GoFile or the database jsut the category
+python gofile-uploader.py -rm Photos
 ```
 
 ## Configuration
@@ -143,6 +162,21 @@ The program maintains a SQLite database file (default: `db/gofile.db`) to store:
 3. Detailed file tracking information
 
 This allows you to organize your uploads by categories, with each category corresponding to a folder on GoFile.io. When you upload files with the same category name, they'll be stored in the same folder, even across different sessions.
+
+## File Expiry Tracking
+
+GoFile uploads expire after a minimum of 14 days. This tool helps you keep track of your files' expiry status:
+
+1. **Expiry Status Display**: When listing files with `-lf`, each file shows one of these status indicators:
+   - "EXPIRED" for files past their expiration date
+   - "EXPIRES SOON (X days)" for files that will expire within 3 days
+   - An exact expiry date (YYYY-MM-DD) for other files
+
+2. **Sorted Expiry View**: Use `-lf -s expiry` to sort files by their expiration date
+
+3. **Safe File Management**: Files are only added to the database when fully uploaded. Interrupted uploads (via Ctrl+C or errors) are not tracked.
+
+4. **Database Cleanup**: Use the `-df` option to delete expired file entries from your local database
 
 ### How It Works
 

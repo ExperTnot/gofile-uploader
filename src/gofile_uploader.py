@@ -9,14 +9,18 @@ Supports categorizing files and uploading to specific folders.
 
 import os
 import json
-import argparse
 import mimetypes
+import argparse
 from datetime import datetime, timedelta
 from .gofile_client import GoFileClient
 from .db_manager import DatabaseManager
 from .logging_utils import setup_logging, get_logger
+from .utils import get_mime_type
 from .config import load_config, migrate_legacy_db
-from .utils import format_size
+from .file_manager import (
+    handle_file_deletion, 
+    list_files
+)
 
 # Get logger for this module
 logger = get_logger(__name__)
@@ -39,6 +43,9 @@ def remove_category(db_manager, category):
         print(f"Category '{category}' removed successfully.")
     else:
         print(f"Failed to remove category '{category}'.")
+
+
+# Function moved to file_manager.py
 
 
 def main():
@@ -66,6 +73,24 @@ def main():
         nargs="?",
         const="all",
         help="List all uploaded files or files for a specific category",
+    )
+    parser.add_argument(
+        "-s",
+        "--sort",
+        choices=["name", "size", "date", "category", "expiry", "link"],
+        help="Sort listed files by: name, size, date (upload date), category, expiry, or link",
+    )
+    parser.add_argument(
+        "-o",
+        "--order",
+        choices=["asc", "desc"],
+        default="asc",
+        help="Sort order: asc (ascending) or desc (descending), default is ascending",
+    )
+    parser.add_argument(
+        "-df",
+        "--delete-file",
+        help="Delete a file entry from the database by ID or exact filename (will not delete from GoFile servers)",
     )
 
     args = parser.parse_args()
@@ -115,132 +140,19 @@ def main():
     # List uploaded files if requested
     if args.list_files:
         category = args.list_files if args.list_files != "all" else None
+        sort_field = args.sort if hasattr(args, 'sort') else None
+        sort_order = args.order if hasattr(args, 'order') else "asc"
+        
+        # Use the list_files function from file_manager module
+        list_files(db_manager, category, sort_field, sort_order)
+        return
 
-        if category and not db_manager.get_folder_by_category(category):
-            print(f"Error: Category '{category}' does not exist.")
-            return
 
-        # Get files from database
-        files = (
-            db_manager.get_files_by_category(category)
-            if category
-            else db_manager.get_all_files()
-        )
-
-        if not files:
-            print(
-                "No files found."
-                + (f" for category '{category}'." if category else ".")
-            )
-            return
-
-        def print_dynamic_table(data, headers):
-            """Print a dynamically sized table based on content length.
-
-            Args:
-                data: List of dictionaries containing the data to print
-                headers: Dictionary mapping column keys to header names
-            """
-            # Calculate column widths based on the longest entry + spacing
-            col_widths = {col: len(header) + 2 for col, header in headers.items()}
-
-            # Find the maximum length of each column value
-            for row in data:
-                for col in headers.keys():
-                    value = str(row.get(col, ""))
-                    col_widths[col] = max(col_widths[col], len(value) + 2)
-
-            # Create format string for each row
-            format_str = " ".join([f"{{:{col_widths[col]}}}" for col in headers.keys()])
-
-            # Calculate total table width
-            total_width = (
-                sum(col_widths.values()) + len(headers) - 1
-            )  # -1 for one less space than columns
-
-            # Print the table
-            print(f"\n{'=' * total_width}")
-            print(format_str.format(*[headers[col] for col in headers.keys()]))
-            print(f"{'-' * total_width}")
-
-            for row in data:
-                print(
-                    format_str.format(
-                        *[str(row.get(col, "")) for col in headers.keys()]
-                    )
-                )
-
-            print(f"{'=' * total_width}\n")
-
-        # Prepare data for display
-        formatted_files = []
-        for file in files:
-            # Format size
-            size_bytes = file.get("size", 0)
-            size_str = format_size(size_bytes)
-
-            # Format upload time
-            upload_time = file.get("upload_time", "")
-            upload_dt = None
-            if "T" in upload_time:
-                try:
-                    upload_dt = datetime.fromisoformat(upload_time)
-                    upload_time = upload_dt.strftime("%Y-%m-%d %H:%M:%S")
-                except Exception as e:
-                    logger.debug(f"Error formatting upload date: {e}")
-            
-            # Calculate expiry status
-            expiry_status = "Unknown"
-            expiry_date = file.get("expiry_date", "")
-            
-            if "T" in expiry_date:
-                try:
-                    expiry_dt = datetime.fromisoformat(expiry_date)
-                    now = datetime.now()
-                    
-                    # Calculate days left
-                    if expiry_dt < now:
-                        expiry_status = "EXPIRED"
-                    else:
-                        days_left = (expiry_dt - now).days
-                        if days_left <= 2:
-                            expiry_status = f"EXPIRES SOON ({days_left} days)"
-                        else:
-                            expiry_status = expiry_dt.strftime("%Y-%m-%d")
-                except Exception as e:
-                    logger.debug(f"Error formatting expiry date: {e}")
-            elif not expiry_date and upload_dt:
-                # If we have no expiry date but have upload date, calculate it
-                try:
-                    expiry_dt = upload_dt + timedelta(days=14)
-                    expiry_status = expiry_dt.strftime("%Y-%m-%d")
-                except Exception as e:
-                    logger.debug(f"Error calculating expiry date: {e}")
-                    
-            # Create formatted entry
-            formatted_files.append(
-                {
-                    "name": file.get("name", ""),
-                    "category": file.get("category") or "",
-                    "size": size_str,
-                    "upload_time": upload_time,
-                    "expiry": expiry_status,
-                    "download_link": file.get("download_link", ""),
-                }
-            )
-
-        # Define headers
-        headers = {
-            "name": "File Name",
-            "category": "Category",
-            "size": "Size",
-            "upload_time": "Upload Date",
-            "expiry": "Expires On",
-            "download_link": "Download Link",
-        }
-
-        # Print the table
-        print_dynamic_table(formatted_files, headers)
+        
+    # Handle file deletion if requested
+    if args.delete_file:
+        # Use the handle_file_deletion function from file_manager module
+        handle_file_deletion(db_manager, args.delete_file)
         return
 
     # Verify we have files to upload
@@ -272,6 +184,7 @@ def main():
             )
 
     # Process each file for upload
+    new_category_folder_created = False
     for file_path in args.files:
         try:
             # Record start time for duration calculation
@@ -318,7 +231,7 @@ def main():
                 client.account_token = guest_token
 
             # If this is a new category and we have a folder ID, save the mapping
-            if new_folder_id and args.category and not folder_id:
+            if new_folder_id and args.category and not folder_id and not new_category_folder_created:
                 logger.debug(
                     f"Saving folder information for category '{args.category}'"
                 )
@@ -329,6 +242,12 @@ def main():
                     "created_at": datetime.now().isoformat(),
                 }
                 db_manager.save_folder_for_category(args.category, folder_info)
+                
+                # CRITICAL FIX: Update the folder_id for subsequent files in this batch
+                folder_id = new_folder_id
+                new_category_folder_created = True
+                logger.info(f"Using folder ID {folder_id} for remaining files in category '{args.category}'")
+                print(f"Created new folder for category '{args.category}'\n")
 
             # Only proceed with file info storage if we have a valid download link and file ID
             # This ensures the upload truly succeeded
