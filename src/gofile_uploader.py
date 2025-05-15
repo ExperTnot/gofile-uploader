@@ -15,7 +15,6 @@ from datetime import datetime, timedelta
 from .gofile_client import GoFileClient
 from .db_manager import DatabaseManager
 from .logging_utils import setup_logging, get_logger
-from .utils import get_mime_type
 from .config import load_config, migrate_legacy_db
 from .file_manager import (
     handle_file_deletion, 
