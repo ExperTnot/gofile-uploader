@@ -5,6 +5,7 @@ Utility functions for the GoFile uploader.
 
 import os
 import time
+import mimetypes
 from typing import Callable
 from tqdm import tqdm
 
@@ -47,6 +48,50 @@ def format_speed(bytes_per_second: float) -> str:
         return f"{bytes_per_second / (1024 * 1024):.2f} MB/s"
     else:
         return f"{bytes_per_second / (1024 * 1024 * 1024):.2f} GB/s"
+
+
+def get_mime_type(filename: str) -> str:
+    """
+    Determine the correct MIME type for a file, with special handling for media formats.
+    
+    Args:
+        filename: The name of the file
+        
+    Returns:
+        The appropriate MIME type string
+    """
+    # First try Python's built-in MIME type detection
+    mime_type, _ = mimetypes.guess_type(filename)
+    
+    # Get file extension
+    ext = os.path.splitext(filename)[1].lower()
+    
+    # Special case handling for common video and audio formats
+    media_types = {
+        '.mp4': 'video/mp4',
+        '.mkv': 'video/x-matroska',
+        '.webm': 'video/webm',
+        '.mov': 'video/quicktime',
+        '.avi': 'video/x-msvideo',
+        '.ts': 'video/mp2t',
+        '.m4a': 'audio/mp4',
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.flac': 'audio/flac',
+        '.ogg': 'audio/ogg'
+    }
+    
+    # If it's a known media type and the detected MIME type is missing or generic,
+    # use our explicit mapping
+    if ext in media_types and (not mime_type or 'octet-stream' in mime_type):
+        return media_types[ext]
+    
+    # If we have a valid MIME type from Python's detection, use that
+    if mime_type:
+        return mime_type
+    
+    # Fallback to our mapping or generic type
+    return media_types.get(ext, 'application/octet-stream')
 
 
 class ProgressFileReader:

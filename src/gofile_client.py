@@ -7,8 +7,9 @@ import os
 import re
 import requests
 import urllib.parse
+from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
 from typing import Dict, Any, Optional
-from .utils import upload_with_progress
+from .utils import upload_with_progress, get_mime_type
 from .logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -132,39 +133,39 @@ class GoFileClient:
     def sanitize_filename(self, filename: str) -> str:
         """
         Sanitize a filename for safer uploads.
-        
+
         Args:
             filename: Original filename
-            
+
         Returns:
             Sanitized filename
         """
         # Log the original filename for debugging
         logger.debug(f"Original filename: {filename}")
-        
+
         # First, URL encode the filename to handle special characters
         url_encoded = urllib.parse.quote(filename)
-        
+
         # Replace problematic characters with underscores
         # Keep alphanumeric, periods, hyphens, and underscores
-        sanitized = re.sub(r'[^\w\-\.]', '_', filename)
-        
+        sanitized = re.sub(r"[^\w\-\.]", "_", filename)
+
         # Make sure we don't have too many consecutive special chars
-        sanitized = re.sub(r'[_\-\.]{2,}', '_', sanitized)
-        
+        sanitized = re.sub(r"[_\-\.]{2,}", "_", sanitized)
+
         # Save the URL-encoded version for potential API usage
         self._last_encoded_filename = url_encoded
-        
+
         # If the name became empty, provide a default
-        if not sanitized or sanitized == '.':
-            sanitized = 'file'
-            
+        if not sanitized or sanitized == ".":
+            sanitized = "file"
+
         # If filename changed, log it
         if sanitized != filename:
             logger.debug(f"Sanitized filename from '{filename}' to '{sanitized}'")
-            
+
         return sanitized
-        
+
     def upload_file(
         self, file_path: str, folder_id: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -186,58 +187,61 @@ class GoFileClient:
             # Using the global upload endpoint which works better for folder management
             url = "https://upload.gofile.io/uploadFile"
             original_file_name = os.path.basename(file_path)
-            
+
             # Sanitize the filename for upload
             file_name = self.sanitize_filename(original_file_name)
 
             # Define the upload function to work with proper progress tracking
-            def perform_upload(file_obj, filename, form_data, chunk_size, progress_callback):
+            def perform_upload(
+                file_obj, filename, form_data, chunk_size, progress_callback
+            ):
                 # Add required parameters to form_data
                 if self.account_token:
                     form_data["token"] = self.account_token
-                
+
                 if folder_id:
                     form_data["folderId"] = folder_id
-                
+
                 # Create session for connection pooling
                 session = requests.Session()
-                
+
                 # Get total file size for progress tracking (used by progress bar)
                 # We don't need to use this directly as the MultipartEncoderMonitor handles it
-                
+
                 # Import what we need for the upload
-                from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
-                
-                # Create the encoder with the file object directly
+
+                # Get the correct MIME type from our utility function
+                mime_type = get_mime_type(filename)
+
+                logger.debug(f"Using MIME type {mime_type} for file {filename}")
+
+                # Create the encoder with the file object directly and correct MIME type
                 encoder = MultipartEncoder(
-                    fields={
-                        **form_data, 
-                        'file': (filename, file_obj, 'application/octet-stream')
-                    }
+                    fields={**form_data, "file": (filename, file_obj, mime_type)}
                 )
-                
+
                 # Define a callback that will be invoked as upload progresses
                 def progress_monitor_callback(monitor):
                     # This is called with the actual bytes uploaded to the server
                     progress_callback(monitor.bytes_read)
-                
+
                 # Create a monitor that will track actual upload progress
                 monitor = MultipartEncoderMonitor(encoder, progress_monitor_callback)
-                
+
                 # Make the POST request with progress monitoring
                 try:
                     response = session.post(
                         url,
                         data=monitor,  # Use the monitor instead of the encoder directly
-                        headers={'Content-Type': monitor.content_type}
+                        headers={"Content-Type": monitor.content_type},
                     )
-                    
+
                     # Check for errors
                     response.raise_for_status()
-                    
+
                     # Return the response JSON
                     return response.json()
-                    
+
                 except KeyboardInterrupt:
                     # Catch interrupt here to cancel the request
                     session.close()
