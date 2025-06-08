@@ -165,7 +165,7 @@ This allows you to organize your uploads by categories, with each category corre
 
 ## File Expiry Tracking
 
-GoFile uploads expire after a minimum of 14 days. This tool helps you keep track of your files' expiry status:
+GoFile uploads expire after a minimum of 14 days. This tool helps you keep track of your files' minimum expiry status:
 
 1. **Expiry Status Display**: When listing files with `-lf`, each file shows one of these status indicators:
    - "EXPIRED" for files past their expiration date

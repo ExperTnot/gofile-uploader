@@ -20,6 +20,7 @@ from .file_manager import (
     handle_file_deletion, 
     list_files
 )
+from .utils import is_mpegts_file
 
 # Get logger for this module
 logger = get_logger(__name__)
@@ -184,7 +185,26 @@ def main():
 
     # Process each file for upload
     new_category_folder_created = False
-    for file_path in args.files:
+    files_to_upload = args.files.copy()  # Make a copy to allow skipping files
+    
+    # First check for MPEG-TS files and ask for confirmation
+    skipped_files = []
+    for i, file_path in enumerate(args.files):
+        # Check if file is MPEG-TS format
+        if is_mpegts_file(file_path):
+            print(f"Warning: '{os.path.basename(file_path)}' appears to be an MPEG-TS (.ts) file, not a .mp4 file.")
+            confirmation = input("Do you really want to upload this .ts file? (yes/no): ")
+            if confirmation.lower() != "yes":
+                print(f"Skipping '{os.path.basename(file_path)}'")
+                skipped_files.append(file_path)
+                logger.info(f"Skipping MPEG-TS file: {file_path} based on user request")
+    
+    # Remove skipped files from the list
+    for file_path in skipped_files:
+        files_to_upload.remove(file_path)
+    
+    # Now process the files that should be uploaded
+    for file_path in files_to_upload:
         try:
             # Record start time for duration calculation
             start_time = datetime.now()
