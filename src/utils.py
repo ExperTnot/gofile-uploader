@@ -6,6 +6,7 @@ Utility functions for the GoFile uploader.
 import os
 import time
 import mimetypes
+import subprocess
 from typing import Callable
 from tqdm import tqdm
 
@@ -48,6 +49,36 @@ def format_speed(bytes_per_second: float) -> str:
         return f"{bytes_per_second / (1024 * 1024):.2f} MB/s"
     else:
         return f"{bytes_per_second / (1024 * 1024 * 1024):.2f} GB/s"
+
+
+def is_mpegts_file(file_path: str) -> bool:
+    """
+    Check if a file is in MPEG-TS format using ffprobe.
+    
+    Args:
+        file_path: Path to the file to check
+        
+    Returns:
+        bool: True if the file is in MPEG-TS format, False otherwise or if ffprobe fails
+    """
+    try:
+        # Run ffprobe command to get format information
+        cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=format_name,format_long_name', 
+               '-of', 'default=noprint_wrappers=1:nokey=1', file_path]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        
+        if result.returncode != 0:
+            # ffprobe failed, log error and assume it's not MPEG-TS
+            return False
+            
+        # Check if output contains MPEG-TS indicators
+        output = result.stdout.strip()
+        return 'mpegts' in output.lower() or 'mpeg-ts' in output.lower()
+        
+    except Exception:
+        # If ffprobe is not installed or other error occurs, assume it's not MPEG-TS
+        return False
 
 
 def get_mime_type(filename: str) -> str:
