@@ -26,7 +26,7 @@ A Python program that uploads files to GoFile.io with progress tracking, logging
 - [x] SQLite database integration
 - [x] Category-based folder management
 - [x] File tracking system
-- [x] File expiry tracking (hardcoded 14 days from upload which his minimum expiration time)
+- [x] File expiry tracking (hardcoded 10 days from upload which his minimum expiration time)
 - [x] Database entry deletion functionality
 - [x] Sortable file listings
 - [ ] Automatic retry on failed uploads
@@ -165,7 +165,7 @@ This allows you to organize your uploads by categories, with each category corre
 
 ## File Expiry Tracking
 
-GoFile uploads expire after a minimum of 14 days. This tool helps you keep track of your files' minimum expiry status:
+GoFile uploads expire after a minimum of 10 days. This tool helps you keep track of your files' minimum expiry status:
 
 1. **Expiry Status Display**: When listing files with `-lf`, each file shows one of these status indicators:
    - "EXPIRED" for files past their expiration date

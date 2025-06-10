@@ -8,7 +8,7 @@ Handles file listing, sorting, and deletion functions for the GoFile uploader.
 import unicodedata
 from datetime import datetime, timedelta
 import logging
-from .utils import format_size
+from .utils import format_size, DAYS
 
 # Get logger
 logger = logging.getLogger("gofile_uploader")
@@ -221,8 +221,7 @@ def list_files(db_manager, category=None, sort_field=None, sort_order="asc"):
         if upload_time:
             try:
                 upload_dt = datetime.fromisoformat(upload_time)
-                # Calculate expiry date (14 days from upload)
-                expiry_dt = upload_dt + timedelta(days=14)
+                expiry_dt = upload_dt + timedelta(days=DAYS)
                 now = datetime.now()
                 
                 # Calculate days left

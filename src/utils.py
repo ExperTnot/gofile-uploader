@@ -10,6 +10,7 @@ import subprocess
 from typing import Callable
 from tqdm import tqdm
 
+DAYS = 10 # gofile default expiry
 
 def format_size(size_bytes: int) -> str:
     """
