@@ -20,7 +20,7 @@ from .file_manager import (
     handle_file_deletion, 
     list_files
 )
-from .utils import is_mpegts_file
+from .utils import is_mpegts_file, DAYS
 
 # Get logger for this module
 logger = get_logger(__name__)
@@ -275,17 +275,16 @@ def main():
                 file_size = os.path.getsize(file_path)
                 file_name = os.path.basename(file_path)
                 mime_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
-    
+
                 # Calculate upload speed (bytes per second)
                 file_size = os.path.getsize(file_path)
                 upload_speed_bps = (
                     file_size / duration_seconds if duration_seconds > 0 else 0.0
                 )
-    
-                # Calculate expiry date (14 days from upload)
+
                 upload_time = datetime.now()
-                expiry_date = upload_time + timedelta(days=14)
-                
+                expiry_date = upload_time + timedelta(days=DAYS)
+
                 # Save file information to the database
                 file_info = {
                     "id": file_id,
