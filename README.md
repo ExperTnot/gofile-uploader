@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # GoFile Uploader
 
 A Python program that uploads files to GoFile.io with progress tracking, logging, and category-based folder management. **This tool is designed specifically for temporary GoFile accounts only.**
