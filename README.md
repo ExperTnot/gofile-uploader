@@ -81,6 +81,15 @@ python gofile-uploader.py -lf
 # List files from a specific category
 python gofile-uploader.py -lf Photos
 
+# Upload files using glob patterns
+python gofile-uploader.py "2025*" -c Project2025  # Upload all files starting with '2025'
+
+# Upload directory contents recursively
+python gofile-uploader.py -r /path/to/directory -c MyFiles  # Upload all files in directory and subdirectories
+
+# Combine glob patterns and recursive uploads
+python gofile-uploader.py -r "2025*/" -c Archive  # Upload all files in directories starting with '2025'
+
 # Sort file listings by various criteria
 python gofile-uploader.py -lf -s name     # Sort by filename
 python gofile-uploader.py -lf -s size     # Sort by file size
