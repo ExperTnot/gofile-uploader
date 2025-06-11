@@ -35,12 +35,122 @@ def list_categories(db_manager):
             print(f"  - {category}")
 
 
+def purge_category_files(db_manager, category):
+    """Delete all file entries for a specific category from the database.
+    
+    This function will delete file entries even if the category itself no longer exists.
+    """
+    # Get count of files first to inform the user
+    files = db_manager.get_files_by_category(category)
+    file_count = len(files)
+    
+    if file_count == 0:
+        print(f"No file entries found for category '{category}'.")
+        return False
+    
+    # Get confirmation first due to irreversible action
+    confirmation = input(f"This will delete {file_count} file entries for category '{category}'. This is IRREVERSIBLE. Continue? (yes/no): ")
+    if confirmation.lower() != "yes":
+        print("File deletion cancelled.")
+        return False
+    
+    # Get final confirmation due to irreversible action
+    final_confirm = input(f"Are you ABSOLUTELY sure you want to delete {file_count} file entries? (yes/no): ")
+    if final_confirm.lower() != "yes":
+        print("File deletion cancelled.")
+        return False
+    
+    deleted_count = db_manager.delete_files_by_category(category)
+    print(f"Deleted {deleted_count} file entries for category '{category}'.")
+    return True
+
+
+def clear_orphaned_files(db_manager):
+    """Remove all file entries from the database whose categories no longer exist.
+    
+    This is an irreversible action that requires confirmation.
+    """
+    # First, get all files and check which ones have orphaned categories
+    all_files = db_manager.get_all_files()
+    categories = set(db_manager.list_categories())
+    
+    orphaned_files = []
+    for file in all_files:
+        if file["category"] and file["category"] not in categories:
+            orphaned_files.append(file)
+    
+    if not orphaned_files:
+        print("No orphaned files found.")
+        return False
+    
+    # Get confirmation for the irreversible action
+    print(f"Found {len(orphaned_files)} file entries with deleted categories:")
+    # Display sample of orphaned files (up to 5)
+    for i, file in enumerate(orphaned_files[:5]):
+        print(f"  - {file['name']} (Category: '{file['category']}')")
+    if len(orphaned_files) > 5:
+        print(f"  ... and {len(orphaned_files) - 5} more")
+        
+    confirmation = input(f"\nDo you want to delete these {len(orphaned_files)} orphaned file entries? This is IRREVERSIBLE. (yes/no): ")
+    if confirmation.lower() != "yes":
+        print("Cleanup cancelled.")
+        return False
+    
+    # Get final confirmation
+    final_confirm = input("Are you ABSOLUTELY sure? This cannot be undone. (yes/no): ")
+    if final_confirm.lower() != "yes":
+        print("Cleanup cancelled.")
+        return False
+    
+    # Delete files by category
+    deleted_count = 0
+    orphaned_categories = set(file["category"] for file in orphaned_files)
+    
+    for category in orphaned_categories:
+        count = db_manager.delete_files_by_category(category)
+        deleted_count += count
+        print(f"Deleted {count} file entries for orphaned category '{category}'")
+    
+    print(f"\nTotal: {deleted_count} orphaned file entries removed successfully.")
+    return True
+
+
 def remove_category(db_manager, category):
-    """Remove a category."""
+    """Remove a category and optionally its associated files from the database."""
+    # Get confirmation first
+    confirmation = input(f"Are you sure you want to remove category '{category}'? (yes/no): ")
+    if confirmation.lower() != "yes":
+        print("Category removal cancelled.")
+        return False
+        
+    # Ask if user also wants to delete all files in this category
+    delete_files = input(f"Do you also want to delete all file entries for '{category}'? This is IRREVERSIBLE. (yes/no): ")
+    
+    if delete_files.lower() == "yes":
+        # Get count of files first to inform the user
+        files = db_manager.get_files_by_category(category)
+        file_count = len(files)
+        
+        if file_count > 0:
+            # Get final confirmation due to irreversible action
+            final_confirm = input(f"This will delete {file_count} file entries for category '{category}'. Are you ABSOLUTELY sure? (yes/no): ")
+            
+            if final_confirm.lower() == "yes":
+                deleted_count = db_manager.delete_files_by_category(category)
+                print(f"Deleted {deleted_count} file entries for category '{category}'.")
+            else:
+                print("File deletion cancelled.")
+                # Still proceed with category removal
+        else:
+            print(f"No file entries found for category '{category}'.")
+    
+    # Now remove the category itself
     if db_manager.remove_category(category):
         print(f"Category '{category}' removed successfully.")
+        return True
     else:
-        print(f"Failed to remove category '{category}'.")
+        print(f"Failed to remove category '{category}'. Category may not exist.")
+        return False
 
 
 # Function moved to file_manager.py
@@ -78,6 +188,17 @@ def main():
         "-rm",
         "--remove",
         help="Remove a category from local database (requires confirmation, doesn't remove folders on Gofile)",
+    )
+    parser.add_argument(
+        "-pf",
+        "--purge-files",
+        type=str,
+        help="Delete all file entries for a specific category from database (irreversible, requires confirmation)",
+    )
+    parser.add_argument(
+        "--clear",
+        action="store_true",
+        help="Remove all file entries for which the associated categories have been deleted (irreversible, requires confirmation)",
     )
     parser.add_argument(
         "-lf",
@@ -146,23 +267,19 @@ def main():
         list_categories(db_manager)
         return
 
-    # Handle category removal with confirmation
-    if args.remove:
-        category = args.remove
-        # Check if category exists
-        if not db_manager.get_folder_by_category(category):
-            print(f"Error: Category '{category}' does not exist.")
-            return
+    # Handle purge files for a category request
+    if args.purge_files:
+        purge_category_files(db_manager, args.purge_files)
+        return
+        
+    # Handle clear orphaned files request
+    if args.clear:
+        clear_orphaned_files(db_manager)
+        return
 
-        # Ask for confirmation
-        confirmation = input(
-            f"Are you sure you want to remove category '{category}'? This cannot be undone. (yes/no): "
-        )
-        if confirmation.lower() == "yes":
-            db_manager.remove_category(category)
-            print(f"Category '{category}' has been removed.")
-        else:
-            print("Category removal cancelled.")
+    # Handle remove category request
+    if args.remove:
+        remove_category(db_manager, args.remove)
         return
 
     # List uploaded files if requested
