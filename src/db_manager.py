@@ -405,3 +405,27 @@ class DatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Error deleting file with ID {file_id}: {str(e)}")
             return False
+
+    def delete_files_by_category(self, category: str) -> int:
+        """
+        Delete all files associated with a specific category from the database.
+
+        Args:
+            category: The category name whose files should be deleted
+
+        Returns:
+            int: Number of files deleted
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM files WHERE category = ?", (category,))
+            deleted_count = cursor.rowcount
+            
+            if deleted_count > 0:
+                self.conn.commit()
+                logger.info(f"Deleted {deleted_count} files associated with category: {category}")
+            
+            return deleted_count
+        except sqlite3.Error as e:
+            logger.error(f"Error deleting files for category {category}: {str(e)}")
+            return 0
