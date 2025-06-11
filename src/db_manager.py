@@ -341,14 +341,14 @@ class DatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Error getting all files: {str(e)}")
             return []
-            
+
     def get_file_by_id(self, file_id: str) -> Optional[Dict[str, any]]:
         """
         Get a file by its ID.
-        
+
         Args:
             file_id: The ID of the file to retrieve
-            
+
         Returns:
             Dict or None: File information if found, None otherwise
         """
@@ -358,11 +358,11 @@ class DatabaseManager:
                 "SELECT id, name, size, mime_type, upload_time, download_link, folder_id, folder_code, category, account_id, upload_speed, upload_duration FROM files WHERE id = ?",
                 (file_id,),
             )
-            
+
             row = cursor.fetchone()
             if not row:
                 return None
-                
+
             return {
                 "id": row[0],
                 "name": row[1],
@@ -380,26 +380,26 @@ class DatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Error getting file with ID {file_id}: {str(e)}")
             return None
-            
+
     def delete_file(self, file_id: str) -> bool:
         """
         Delete a file from the database by its ID.
-        
+
         Args:
             file_id: The ID of the file to delete
-            
+
         Returns:
             bool: True if the file was deleted, False if it didn't exist or an error occurred
         """
         try:
             cursor = self.conn.cursor()
             cursor.execute("DELETE FROM files WHERE id = ?", (file_id,))
-            
+
             if cursor.rowcount > 0:
                 self.conn.commit()
                 logger.info(f"Deleted file with ID: {file_id}")
                 return True
-            
+
             logger.warning(f"No file found with ID: {file_id}")
             return False
         except sqlite3.Error as e:

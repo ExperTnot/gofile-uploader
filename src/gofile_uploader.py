@@ -16,12 +16,9 @@ from datetime import datetime, timedelta
 from .gofile_client import GoFileClient
 from .db_manager import DatabaseManager
 from .logging_utils import setup_logging, get_logger
-from .config import load_config, migrate_legacy_db
-from .file_manager import (
-    handle_file_deletion, 
-    list_files
-)
-from .utils import is_mpegts_file
+from .config import config
+from .file_manager import handle_file_deletion, list_files
+from .utils import is_mpegts_file, DAYS, BLUE, END
 
 # Get logger for this module
 logger = get_logger(__name__)
@@ -52,10 +49,15 @@ def remove_category(db_manager, category):
 def main():
     """Main function to handle command line arguments and start the upload."""
     parser = argparse.ArgumentParser(
-        description="Upload files to GoFile.io with category management"
+        description="Upload files to GoFile.io with category management for free Gofile accounts",
+        epilog=f"NOTE: This tool works with free Gofile accounts only. Due to API limitations, file records are stored locally rather than retrieved from Gofile servers. Files on Gofile.io will expire after {DAYS} days in free accounts.",
     )
-    parser.add_argument("files", nargs="*", help="Files to upload")
-    parser.add_argument("-c", "--category", help="Category to upload files to")
+    parser.add_argument("files", nargs="*", help="Path to file(s) you want to upload")
+    parser.add_argument(
+        "-c",
+        "--category",
+        help="Category name to organize your uploads (will create a folder on Gofile)",
+    )
     parser.add_argument(
         "-r", "--recursive", action="store_true", 
         help="Recursively upload files in directories"
@@ -67,17 +69,22 @@ def main():
         "-v", "--verbose", action="store_true", help="Show verbose output"
     )
     parser.add_argument(
-        "-l", "--list", action="store_true", help="List all available categories"
+        "-l",
+        "--list",
+        action="store_true",
+        help="List all available categories you've created",
     )
     parser.add_argument(
-        "-rm", "--remove", help="Remove a category (requires confirmation)"
+        "-rm",
+        "--remove",
+        help="Remove a category from local database (requires confirmation, doesn't remove folders on Gofile)",
     )
     parser.add_argument(
         "-lf",
         "--list-files",
         nargs="?",
         const="all",
-        help="List all uploaded files or files for a specific category",
+        help="List all uploaded files or files for a specific category (use 'all' or a category name, default is 'all')",
     )
     parser.add_argument(
         "-s",
@@ -95,28 +102,25 @@ def main():
     parser.add_argument(
         "-df",
         "--delete-file",
-        help="Delete a file entry from the database by ID or exact filename (will not delete from GoFile servers)",
+        help="Delete a file entry from the local database by ID or exact filename (Note: this won't delete the file from GoFile servers)",
     )
 
     args = parser.parse_args()
 
-    # Load configuration
-    config = load_config()
-
-    # Check for legacy database
-    migrate_legacy_db(config)
+    # Ensure database is properly initialized
+    config.ensure_database_initialized()
 
     # Configure logging
     setup_logging(
-        log_folder=config["log_folder"],
-        log_basename=config["log_basename"],
-        max_bytes=config["max_log_size_mb"] * 1024 * 1024,
-        backup_count=config["max_log_backups"],
+        log_folder=config.get("log_folder"),
+        log_basename=config.get("log_basename"),
+        max_bytes=config.get("max_log_size_mb", 5) * 1024 * 1024,
+        backup_count=config.get("max_log_backups", 10),
         verbose=args.verbose,
     )
 
     # Initialize the database manager
-    db_manager = DatabaseManager(config["database_path"])
+    db_manager = DatabaseManager(config.get("database_path"))
 
     # List categories if requested
     if args.list:
@@ -145,15 +149,13 @@ def main():
     # List uploaded files if requested
     if args.list_files:
         category = args.list_files if args.list_files != "all" else None
-        sort_field = args.sort if hasattr(args, 'sort') else None
-        sort_order = args.order if hasattr(args, 'order') else "asc"
-        
+        sort_field = args.sort if hasattr(args, "sort") else None
+        sort_order = args.order if hasattr(args, "order") else "asc"
+
         # Use the list_files function from file_manager module
         list_files(db_manager, category, sort_field, sort_order)
         return
 
-
-        
     # Handle file deletion if requested
     if args.delete_file:
         # Use the handle_file_deletion function from file_manager module
@@ -235,23 +237,28 @@ def main():
     # Process each file for upload
     new_category_folder_created = False
     files_to_upload = args.files.copy()  # Make a copy to allow skipping files
-    
+
     # First check for MPEG-TS files and ask for confirmation
     skipped_files = []
     for i, file_path in enumerate(args.files):
         # Check if file is MPEG-TS format
         if is_mpegts_file(file_path):
-            print(f"Warning: '{os.path.basename(file_path)}' appears to be an MPEG-TS (.ts) file, not a .mp4 file.")
-            confirmation = input("Do you really want to upload this .ts file? (yes/no): ")
+            print(
+                f"WARNING: '{os.path.basename(file_path)}' appears to be an MPEG-TS (.ts) file."
+            )
+            print(
+                "These files may not play correctly in browsers when shared via GoFile."
+            )
+            confirmation = input("Do you still want to upload this file? (yes/no): ")
             if confirmation.lower() != "yes":
                 print(f"Skipping '{os.path.basename(file_path)}'")
                 skipped_files.append(file_path)
                 logger.info(f"Skipping MPEG-TS file: {file_path} based on user request")
-    
+
     # Remove skipped files from the list
     for file_path in skipped_files:
         files_to_upload.remove(file_path)
-    
+
     # Now process the files that should be uploaded
     for file_path in files_to_upload:
         try:
@@ -260,7 +267,7 @@ def main():
 
             # Upload the file to the specified folder (if any)
             response_data = client.upload_file(file_path, folder_id=folder_id)
-            
+
             # If we reach this point, the upload was successful
             # Calculate upload duration
             duration_seconds = (datetime.now() - start_time).total_seconds()
@@ -299,7 +306,12 @@ def main():
                 client.account_token = guest_token
 
             # If this is a new category and we have a folder ID, save the mapping
-            if new_folder_id and args.category and not folder_id and not new_category_folder_created:
+            if (
+                new_folder_id
+                and args.category
+                and not folder_id
+                and not new_category_folder_created
+            ):
                 logger.debug(
                     f"Saving folder information for category '{args.category}'"
                 )
@@ -310,11 +322,13 @@ def main():
                     "created_at": datetime.now().isoformat(),
                 }
                 db_manager.save_folder_for_category(args.category, folder_info)
-                
+
                 # CRITICAL FIX: Update the folder_id for subsequent files in this batch
                 folder_id = new_folder_id
                 new_category_folder_created = True
-                logger.info(f"Using folder ID {folder_id} for remaining files in category '{args.category}'")
+                logger.info(
+                    f"Using folder ID {folder_id} for remaining files in category '{args.category}'"
+                )
                 print(f"Created new folder for category '{args.category}'\n")
 
             # Only proceed with file info storage if we have a valid download link and file ID
@@ -323,18 +337,19 @@ def main():
                 # Save detailed file information to the database
                 file_size = os.path.getsize(file_path)
                 file_name = os.path.basename(file_path)
-                mime_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
-    
+                mime_type = (
+                    mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+                )
+
                 # Calculate upload speed (bytes per second)
                 file_size = os.path.getsize(file_path)
                 upload_speed_bps = (
                     file_size / duration_seconds if duration_seconds > 0 else 0.0
                 )
-    
-                # Calculate expiry date (14 days from upload)
+
                 upload_time = datetime.now()
-                expiry_date = upload_time + timedelta(days=14)
-                
+                expiry_date = upload_time + timedelta(days=DAYS)
+
                 # Save file information to the database
                 file_info = {
                     "id": file_id,
@@ -351,10 +366,10 @@ def main():
                     "upload_speed": upload_speed_bps,
                     "upload_duration": duration_seconds,
                 }
-    
+
                 # Only add to database if upload was complete
                 db_manager.save_file_info(file_info)
-    
+
                 # Add entry to log file - use the same log file pattern as the rotating handler
                 log_file = os.path.join(
                     config["log_folder"], f"{config['log_basename']}_0.log"
@@ -364,7 +379,9 @@ def main():
                         "timestamp": datetime.now().isoformat(),
                         "filename": os.path.basename(file_path),
                         "filesize": os.path.getsize(file_path),
-                        "filesize_formatted": response_data.get("file_size_formatted", ""),
+                        "filesize_formatted": response_data.get(
+                            "file_size_formatted", ""
+                        ),
                         "upload_speed": response_data.get("speed_formatted", ""),
                         "download_link": download_link,
                         "file_id": file_id,
@@ -374,7 +391,7 @@ def main():
                         "category": args.category,
                     }
                     log.write(json.dumps(log_entry) + "\n")
-    
+
                 # Print information to the console
                 if not args.quiet:
                     print(f"\nFile: {os.path.basename(file_path)}")
@@ -382,13 +399,17 @@ def main():
                         print(f"Category: {args.category}")
                     print(f"Size: {response_data.get('file_size_formatted', '')}")
                     print(f"Upload speed: {response_data.get('speed_formatted', '')}")
-                    print(f"Download link: {download_link}")
+                    print(f"Download link: {BLUE}{download_link}{END}")
                     print(f"Expires on: {expiry_date.strftime('%Y-%m-%d')}")
                     print("-" * 50)
             else:
                 # Somehow we got a response but no valid download link or file ID
-                logger.warning(f"Upload of {file_path} received incomplete data from server")
-                print(f"Warning: Upload may not have completed successfully for {os.path.basename(file_path)}")
+                logger.warning(
+                    f"Upload of {file_path} received incomplete data from server"
+                )
+                print(
+                    f"Warning: Upload may not have completed successfully for {os.path.basename(file_path)}"
+                )
 
         except KeyboardInterrupt:
             logger.warning(f"Upload of {file_path} cancelled by user")
@@ -398,6 +419,7 @@ def main():
             logger.error(f"Error uploading {file_path}", exc_info=True)
             logger.error(f"{e}")
             print(f"Error uploading: {str(e)}")
+
 
 if __name__ == "__main__":
     main()

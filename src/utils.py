@@ -5,10 +5,13 @@ Utility functions for the GoFile uploader.
 
 import os
 import time
-import mimetypes
 import subprocess
 from typing import Callable
 from tqdm import tqdm
+
+DAYS = 10  # gofile default expiry
+BLUE = "\033[94m"
+END = "\033[0m"
 
 
 def format_size(size_bytes: int) -> str:
@@ -54,75 +57,39 @@ def format_speed(bytes_per_second: float) -> str:
 def is_mpegts_file(file_path: str) -> bool:
     """
     Check if a file is in MPEG-TS format using ffprobe.
-    
+
     Args:
         file_path: Path to the file to check
-        
+
     Returns:
         bool: True if the file is in MPEG-TS format, False otherwise or if ffprobe fails
     """
     try:
         # Run ffprobe command to get format information
-        cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=format_name,format_long_name', 
-               '-of', 'default=noprint_wrappers=1:nokey=1', file_path]
-        
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=format_name,format_long_name",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            file_path,
+        ]
+
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        
+
         if result.returncode != 0:
             # ffprobe failed, log error and assume it's not MPEG-TS
             return False
-            
+
         # Check if output contains MPEG-TS indicators
         output = result.stdout.strip()
-        return 'mpegts' in output.lower() or 'mpeg-ts' in output.lower()
-        
+        return "mpegts" in output.lower() or "mpeg-ts" in output.lower()
+
     except Exception:
         # If ffprobe is not installed or other error occurs, assume it's not MPEG-TS
         return False
-
-
-def get_mime_type(filename: str) -> str:
-    """
-    Determine the correct MIME type for a file, with special handling for media formats.
-    
-    Args:
-        filename: The name of the file
-        
-    Returns:
-        The appropriate MIME type string
-    """
-    # First try Python's built-in MIME type detection
-    mime_type, _ = mimetypes.guess_type(filename)
-    
-    # Get file extension
-    ext = os.path.splitext(filename)[1].lower()
-    
-    # Special case handling for common video and audio formats
-    media_types = {
-        '.mp4': 'video/mp4',
-        '.mkv': 'video/x-matroska',
-        '.webm': 'video/webm',
-        '.mov': 'video/quicktime',
-        '.avi': 'video/x-msvideo',
-        '.ts': 'video/mp2t',
-        '.m4a': 'audio/mp4',
-        '.mp3': 'audio/mpeg',
-        '.wav': 'audio/wav',
-        '.flac': 'audio/flac',
-        '.ogg': 'audio/ogg'
-    }
-    
-    # If it's a known media type and the detected MIME type is missing or generic,
-    # use our explicit mapping
-    if ext in media_types and (not mime_type or 'octet-stream' in mime_type):
-        return media_types[ext]
-    
-    # If we have a valid MIME type from Python's detection, use that
-    if mime_type:
-        return mime_type
-    
-    # Fallback to our mapping or generic type
-    return media_types.get(ext, 'application/octet-stream')
 
 
 class ProgressFileReader:
@@ -209,27 +176,49 @@ def upload_with_progress(file_path: str, upload_func, desc: str = None):
         unit_scale=True,
         unit_divisor=1024,
         desc=desc,
-        bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+        bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]{postfix}",
     ) as pbar:
         # Store last read position to avoid progress bar jumps
         last_position = [0]
-        
+
         # This callback is called during upload to update progress
         def progress_callback(current_bytes):
             # Get current bytes processed
             bytes_read = current_bytes
-            
+
             # Ensure we never go backwards or beyond total
             if bytes_read > last_position[0] and bytes_read <= file_size:
                 # Update progress bar by the difference
                 pbar.update(bytes_read - last_position[0])
                 last_position[0] = bytes_read
-                
+
                 # Update speed display
                 elapsed = time.time() - start_time
                 if elapsed > 0:
+                    # Calculate current speed
                     speed = bytes_read / elapsed  # bytes per second
-                    pbar.set_postfix_str(format_speed(speed))
+
+                    if not hasattr(pbar, "speed_history"):
+                        pbar.speed_history = []
+
+                    # Add current speed to history
+                    timestamp = time.time()
+                    pbar.speed_history.append((timestamp, speed))
+
+                    # Keep only recent entries (last 2 seconds)
+                    cutoff_time = timestamp - 2
+                    pbar.speed_history = [
+                        (t, s) for t, s in pbar.speed_history if t >= cutoff_time
+                    ]
+
+                    # Use slightly smoothed speed for display
+                    if len(pbar.speed_history) > 1:
+                        speed = sum(s for _, s in pbar.speed_history) / len(
+                            pbar.speed_history
+                        )
+
+                    # Set speed display with just current speed
+                    pbar.set_postfix_str(f"{format_speed(speed)}")
 
         # Ensure we close with the bar at 100%
         def ensure_completion():
@@ -240,49 +229,52 @@ def upload_with_progress(file_path: str, upload_func, desc: str = None):
         # Implement a modified approach that allows more frequent interrupt checks
         # We'll set a small chunk size for reading the file to allow more frequent interrupt checks
         CHUNK_SIZE = 10 * 1024 * 1024  # 10MB chunks
-        
+
         try:
             # Function to check for interrupt periodically
             def check_for_interrupt():
                 # This provides a hook point for keyboard interrupts to be processed
                 time.sleep(0)  # Yield to the event loop briefly
-            
+
             # Open the file and prepare for chunked upload
             with open(file_path, "rb") as file_data:
                 # Create the initial request data
                 form_data = {}
-                
+
                 # Create a wrapper for the progress callback
                 def update_progress(bytes_read):
                     progress_callback(bytes_read)
                     # Check for interrupt after each progress update
                     check_for_interrupt()
-                
+
                 # Prepare the upload with progress tracking
-                result = upload_func(file_data, file_name, form_data, CHUNK_SIZE, update_progress)
-                
+                result = upload_func(
+                    file_data, file_name, form_data, CHUNK_SIZE, update_progress
+                )
+
                 # Ensure progress bar completes to 100%
                 ensure_completion()
-                
+
         except KeyboardInterrupt:
             # Handle keyboard interrupt (Ctrl+C) gracefully
             # Mark as interrupted to avoid completion message
             setattr(pbar, "_interrupted", True)
-            
+
             # Clear the progress bar line completely to prevent duplicate display
             pbar.clear()
-            
+
             # Disable the progress bar to prevent further output
             pbar.disable = True
-            
+
             # Close without additional messages
             pbar.close()
-            
+
             # Re-raise the interrupt for the main handler
             raise
         except Exception as e:
             # Log the specific exception
             import traceback
+
             pbar.write(f"\nError during upload: {str(e)}")
             pbar.write(traceback.format_exc())
             # Ensure progress bar is properly closed
