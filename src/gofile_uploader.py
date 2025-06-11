@@ -100,6 +100,25 @@ def main():
         help="Sort order: asc (ascending) or desc (descending), default is ascending",
     )
     parser.add_argument(
+        "-p", "--page",
+        type=int,
+        default=1,
+        help="Page number for file listings (default: 1)",
+    )
+    parser.add_argument(
+        "-mfn", "--max-filename",
+        nargs='?',
+        type=int,
+        const=80,  # Default when flag is used without value
+        default=None,  # Default when flag is not used at all
+        help="Maximum filename width in characters (default: no limit, 80 if flag is used without value, 0 for no limit)",
+    )
+    parser.add_argument(
+        "-col", "--columns",
+        type=str,
+        help="Comma-separated list of columns to display (id,name,category,size,date,expiry,link)",
+    )
+    parser.add_argument(
         "-df",
         "--delete-file",
         help="Delete a file entry from the local database by ID or exact filename (Note: this won't delete the file from GoFile servers)",
@@ -151,9 +170,24 @@ def main():
         category = args.list_files if args.list_files != "all" else None
         sort_field = args.sort if hasattr(args, "sort") else None
         sort_order = args.order if hasattr(args, "order") else "asc"
+        page = max(1, args.page) if hasattr(args, "page") else 1
+        max_filename = args.max_filename if hasattr(args, "max_filename") and args.max_filename is not None else None
 
+        # Parse columns if specified
+        columns = None
+        if hasattr(args, "columns") and args.columns:
+            columns = [col.strip() for col in args.columns.split(",")]
+            
         # Use the list_files function from file_manager module
-        list_files(db_manager, category, sort_field, sort_order)
+        list_files(
+            db_manager, 
+            category=category, 
+            sort_field=sort_field, 
+            sort_order=sort_order,
+            page=page,
+            max_filename_length=max_filename,
+            columns=columns
+        )
         return
 
     # Handle file deletion if requested
@@ -372,7 +406,7 @@ def main():
 
                 # Add entry to log file - use the same log file pattern as the rotating handler
                 log_file = os.path.join(
-                    config["log_folder"], f"{config['log_basename']}_0.log"
+                    config.get("log_folder"), f"{config.get('log_basename')}_0.log"
                 )
                 with open(log_file, "a") as log:
                     log_entry = {
