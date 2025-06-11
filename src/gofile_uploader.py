@@ -11,6 +11,7 @@ import os
 import json
 import mimetypes
 import argparse
+import glob
 from datetime import datetime, timedelta
 from .gofile_client import GoFileClient
 from .db_manager import DatabaseManager
@@ -55,6 +56,10 @@ def main():
     )
     parser.add_argument("files", nargs="*", help="Files to upload")
     parser.add_argument("-c", "--category", help="Category to upload files to")
+    parser.add_argument(
+        "-r", "--recursive", action="store_true", 
+        help="Recursively upload files in directories"
+    )
     parser.add_argument(
         "-q", "--quiet", action="store_true", help="Suppress summary output"
     )
@@ -159,6 +164,50 @@ def main():
     if not args.files:
         parser.print_help()
         return
+        
+    # Expand any glob patterns in the file list
+    expanded_files = []
+    for pattern in args.files:
+        # Check if the pattern contains any glob special characters
+        if any(char in pattern for char in ['*', '?', '[']):
+            matched_files = glob.glob(pattern)
+            if not matched_files:
+                print(f"Warning: No files found matching pattern: {pattern}")
+                continue
+            expanded_files.extend(matched_files)
+        else:
+            # If it's not a pattern, just add the file if it exists
+            if os.path.exists(pattern):
+                expanded_files.append(pattern)
+            else:
+                print(f"Warning: File not found: {pattern}")
+    
+    if not expanded_files:
+        print("No valid files found to upload.")
+        return
+    
+    # Process directories based on recursive flag
+    final_files = []
+    for file_path in expanded_files:
+        if os.path.isdir(file_path):
+            if args.recursive:
+                # Recursively gather all files from the directory
+                logger.info(f"Recursively processing directory: {file_path}")
+                for root, _, files in os.walk(file_path):
+                    for filename in files:
+                        final_files.append(os.path.join(root, filename))
+                print(f"Added {len(final_files)} files from directory {file_path}")
+            else:
+                print(f"Skipping directory: {file_path} (use -r flag to upload directories recursively)")
+        else:
+            final_files.append(file_path)
+    
+    if not final_files:
+        print("No valid files found to upload after directory processing.")
+        return
+        
+    # Replace the original file list with the processed one
+    args.files = final_files
 
     # Get guest account from database if available
     guest_account = db_manager.get_guest_account()
