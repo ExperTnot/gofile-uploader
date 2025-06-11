@@ -10,7 +10,7 @@ import urllib.parse
 from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
 from typing import Dict, Any, Optional
 import mimetypes
-from .utils import upload_with_progress
+from .utils import upload_with_progress, format_time, BLUE, END
 from .logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -269,11 +269,17 @@ class GoFileClient:
                 folder_id = response_data.get("parentFolder", "")
 
                 # Log the successful upload
+                human_readable_time = format_time(upload_result['elapsed_time'])
                 logger.info(
                     f"Successfully uploaded {file_name} ({upload_result['file_size_formatted']}) in "
-                    f"{upload_result['elapsed_time']:.2f}s at {upload_result['speed_formatted']}"
+                    f"{human_readable_time} at {upload_result['speed_formatted']}"
                 )
                 logger.info(f"Download link: {download_page}")
+                
+                # Print to console with colored link
+                print(f"Successfully uploaded {file_name} ({upload_result['file_size_formatted']}) in "
+                      f"{human_readable_time} at {upload_result['speed_formatted']}")
+                print(f"Download link: {BLUE}{download_page}{END}")
 
                 # Add additional information to the result
                 response_data["file_id"] = file_id

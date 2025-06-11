@@ -81,6 +81,16 @@ python gofile-uploader.py -lf
 # List files from a specific category
 python gofile-uploader.py -lf Photos
 
+# Control filename display width
+python gofile-uploader.py -lf -mfn       # Limit filenames to 80 characters
+python gofile-uploader.py -lf -mfn 50    # Limit filenames to 50 characters
+
+# Pagination for large file listings
+python gofile-uploader.py -lf -p 2       # View second page of results
+
+# Combine options
+python gofile-uploader.py -lf -s date -o desc -p 2 -mfn 50  # Sort by date, page 2, 50-char filenames
+
 # Upload files using glob patterns
 python gofile-uploader.py "2025*" -c Project2025  # Upload all files starting with '2025'
 
@@ -101,12 +111,15 @@ python gofile-uploader.py -lf -s link     # Sort by download link
 # Change sort order (default is ascending)
 python gofile-uploader.py -lf -s size -o desc  # Sort by size in descending order
 
+# Select specific columns to display
+python gofile-uploader.py -lf -col id,name,size      # Show only ID, filename and size
+
 # Delete a file entry from the database
 python gofile-uploader.py -df filename.ext   # Delete by filename
 python gofile-uploader.py -df 1              # Delete by serial ID
 python gofile-uploader.py -df abc123-456     # Delete by file ID
 
-# Remove a category (with confirmation) . Does not remove files from GoFile or the database jsut the category
+# Remove a category (with confirmation). Does not remove files from GoFile or the database jsut the category
 python gofile-uploader.py -rm Photos
 ```
 
