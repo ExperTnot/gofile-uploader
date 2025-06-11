@@ -9,7 +9,8 @@ import requests
 import urllib.parse
 from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
 from typing import Dict, Any, Optional
-from .utils import upload_with_progress, get_mime_type
+import mimetypes
+from .utils import upload_with_progress
 from .logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -210,12 +211,13 @@ class GoFileClient:
 
                 # Import what we need for the upload
 
-                # Get the correct MIME type from our utility function
-                mime_type = get_mime_type(filename)
+                # Get MIME type using Python's built-in mimetypes
+                mime_type, _ = mimetypes.guess_type(filename)
+                mime_type = mime_type or "application/octet-stream"
 
                 logger.debug(f"Using MIME type {mime_type} for file {filename}")
 
-                # Create the encoder with the file object directly and correct MIME type
+                # Create the multipart form data with the file
                 encoder = MultipartEncoder(
                     fields={**form_data, "file": (filename, file_obj, mime_type)}
                 )
