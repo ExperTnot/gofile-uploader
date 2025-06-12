@@ -130,12 +130,12 @@ def print_dynamic_table(data, headers, max_filename_length=None):
     """
     # Make a copy of data to avoid modifying the original
     display_data = data.copy()
-    
+
     # Truncate filenames if max length is specified
-    if max_filename_length is not None and 'name' in headers:
+    if max_filename_length is not None and "name" in headers:
         for row in display_data:
-            if 'name' in row and len(str(row['name'])) > max_filename_length:
-                row['name'] = row['name'][:max_filename_length - 3] + '...'
+            if "name" in row and len(str(row["name"])) > max_filename_length:
+                row["name"] = row["name"][: max_filename_length - 3] + "..."
 
     # Calculate column widths based on the longest entry + spacing
     col_widths = {col: len(header) + 2 for col, header in headers.items()}
@@ -145,7 +145,6 @@ def print_dynamic_table(data, headers, max_filename_length=None):
         for col in headers.keys():
             value = str(row.get(col, ""))
             col_widths[col] = max(col_widths[col], len(value) + 2)
-
 
     # Create format string for each row
     format_str = " ".join([f"{{:{col_widths[col]}}}" for col in headers.keys()])
@@ -196,7 +195,15 @@ def sort_by_link(file_entry):
     return file_entry["download_link"]
 
 
-def list_files(db_manager, category=None, sort_field=None, sort_order="asc", page=1, max_filename_length=None, columns=None):
+def list_files(
+    db_manager,
+    category=None,
+    sort_field=None,
+    sort_order="asc",
+    page=1,
+    max_filename_length=None,
+    columns=None,
+):
     """
     List files with optional sorting, pagination, filename truncation, and column selection.
 
@@ -324,7 +331,7 @@ def list_files(db_manager, category=None, sort_field=None, sort_order="asc", pag
         "expiry": "Expires On",
         "download_link": "Download Link",
     }
-    
+
     # Map user-friendly column names to actual column keys
     column_aliases = {
         "id": "serial_id",
@@ -335,7 +342,7 @@ def list_files(db_manager, category=None, sort_field=None, sort_order="asc", pag
         "expiry": "expiry",
         "link": "download_link",
     }
-    
+
     # Filter headers based on user column selection
     if columns:
         # Convert user column names to actual column keys
@@ -345,13 +352,15 @@ def list_files(db_manager, category=None, sort_field=None, sort_order="asc", pag
                 selected_columns.append(column_aliases[col])
             elif col in all_headers:
                 selected_columns.append(col)
-        
+
         # Always include serial_id as the first column if not explicitly selected
         if "serial_id" not in selected_columns:
             selected_columns.insert(0, "serial_id")
-            
+
         # Create filtered headers dictionary
-        headers = {col: all_headers[col] for col in selected_columns if col in all_headers}
+        headers = {
+            col: all_headers[col] for col in selected_columns if col in all_headers
+        }
     else:
         # Use all headers if no columns specified
         headers = all_headers.copy()
@@ -359,19 +368,21 @@ def list_files(db_manager, category=None, sort_field=None, sort_order="asc", pag
     # Implement pagination
     page_size = 20  # Number of items per page
     total_pages = (len(formatted_files) + page_size - 1) // page_size
-    
+
     # Ensure page is within valid range
     page = min(max(1, page), total_pages) if total_pages > 0 else 1
-    
+
     # Get the current page of data
-    current_page_data = formatted_files[(page-1)*page_size : page*page_size]
-    
+    current_page_data = formatted_files[(page - 1) * page_size : page * page_size]
+
     # Print the table
     print_dynamic_table(current_page_data, headers, max_filename_length)
-    
+
     # Print pagination info below the table
-    print(f"Page {page} of {total_pages} (showing {len(current_page_data)} of {len(formatted_files)} files)")
+    print(
+        f"Page {page} of {total_pages} (showing {len(current_page_data)} of {len(formatted_files)} files)"
+    )
     if total_pages > 1:
         print(f"Use '-p N' or '--page N' to view page N of {total_pages}")
-    
+
     return True

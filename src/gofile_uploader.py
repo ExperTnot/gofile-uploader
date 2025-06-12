@@ -37,29 +37,33 @@ def list_categories(db_manager):
 
 def purge_category_files(db_manager, category):
     """Delete all file entries for a specific category from the database.
-    
+
     This function will delete file entries even if the category itself no longer exists.
     """
     # Get count of files first to inform the user
     files = db_manager.get_files_by_category(category)
     file_count = len(files)
-    
+
     if file_count == 0:
         print(f"No file entries found for category '{category}'.")
         return False
-    
+
     # Get confirmation first due to irreversible action
-    confirmation = input(f"This will delete {file_count} file entries for category '{category}'. This is IRREVERSIBLE. Continue? (yes/no): ")
+    confirmation = input(
+        f"This will delete {file_count} file entries for category '{category}'. This is IRREVERSIBLE. Continue? (yes/no): "
+    )
     if confirmation.lower() != "yes":
         print("File deletion cancelled.")
         return False
-    
+
     # Get final confirmation due to irreversible action
-    final_confirm = input(f"Are you ABSOLUTELY sure you want to delete {file_count} file entries? (yes/no): ")
+    final_confirm = input(
+        f"Are you ABSOLUTELY sure you want to delete {file_count} file entries? (yes/no): "
+    )
     if final_confirm.lower() != "yes":
         print("File deletion cancelled.")
         return False
-    
+
     deleted_count = db_manager.delete_files_by_category(category)
     print(f"Deleted {deleted_count} file entries for category '{category}'.")
     return True
@@ -67,22 +71,22 @@ def purge_category_files(db_manager, category):
 
 def clear_orphaned_files(db_manager):
     """Remove all file entries from the database whose categories no longer exist.
-    
+
     This is an irreversible action that requires confirmation.
     """
     # First, get all files and check which ones have orphaned categories
     all_files = db_manager.get_all_files()
     categories = set(db_manager.list_categories())
-    
+
     orphaned_files = []
     for file in all_files:
         if file["category"] and file["category"] not in categories:
             orphaned_files.append(file)
-    
+
     if not orphaned_files:
         print("No orphaned files found.")
         return False
-    
+
     # Get confirmation for the irreversible action
     print(f"Found {len(orphaned_files)} file entries with deleted categories:")
     # Display sample of orphaned files (up to 5)
@@ -90,27 +94,29 @@ def clear_orphaned_files(db_manager):
         print(f"  - {file['name']} (Category: '{file['category']}')")
     if len(orphaned_files) > 5:
         print(f"  ... and {len(orphaned_files) - 5} more")
-        
-    confirmation = input(f"\nDo you want to delete these {len(orphaned_files)} orphaned file entries? This is IRREVERSIBLE. (yes/no): ")
+
+    confirmation = input(
+        f"\nDo you want to delete these {len(orphaned_files)} orphaned file entries? This is IRREVERSIBLE. (yes/no): "
+    )
     if confirmation.lower() != "yes":
         print("Cleanup cancelled.")
         return False
-    
+
     # Get final confirmation
     final_confirm = input("Are you ABSOLUTELY sure? This cannot be undone. (yes/no): ")
     if final_confirm.lower() != "yes":
         print("Cleanup cancelled.")
         return False
-    
+
     # Delete files by category
     deleted_count = 0
     orphaned_categories = set(file["category"] for file in orphaned_files)
-    
+
     for category in orphaned_categories:
         count = db_manager.delete_files_by_category(category)
         deleted_count += count
         print(f"Deleted {count} file entries for orphaned category '{category}'")
-    
+
     print(f"\nTotal: {deleted_count} orphaned file entries removed successfully.")
     return True
 
@@ -118,32 +124,40 @@ def clear_orphaned_files(db_manager):
 def remove_category(db_manager, category):
     """Remove a category and optionally its associated files from the database."""
     # Get confirmation first
-    confirmation = input(f"Are you sure you want to remove category '{category}'? (yes/no): ")
+    confirmation = input(
+        f"Are you sure you want to remove category '{category}'? (yes/no): "
+    )
     if confirmation.lower() != "yes":
         print("Category removal cancelled.")
         return False
-        
+
     # Ask if user also wants to delete all files in this category
-    delete_files = input(f"Do you also want to delete all file entries for '{category}'? This is IRREVERSIBLE. (yes/no): ")
-    
+    delete_files = input(
+        f"Do you also want to delete all file entries for '{category}'? This is IRREVERSIBLE. (yes/no): "
+    )
+
     if delete_files.lower() == "yes":
         # Get count of files first to inform the user
         files = db_manager.get_files_by_category(category)
         file_count = len(files)
-        
+
         if file_count > 0:
             # Get final confirmation due to irreversible action
-            final_confirm = input(f"This will delete {file_count} file entries for category '{category}'. Are you ABSOLUTELY sure? (yes/no): ")
-            
+            final_confirm = input(
+                f"This will delete {file_count} file entries for category '{category}'. Are you ABSOLUTELY sure? (yes/no): "
+            )
+
             if final_confirm.lower() == "yes":
                 deleted_count = db_manager.delete_files_by_category(category)
-                print(f"Deleted {deleted_count} file entries for category '{category}'.")
+                print(
+                    f"Deleted {deleted_count} file entries for category '{category}'."
+                )
             else:
                 print("File deletion cancelled.")
                 # Still proceed with category removal
         else:
             print(f"No file entries found for category '{category}'.")
-    
+
     # Now remove the category itself
     if db_manager.remove_category(category):
         print(f"Category '{category}' removed successfully.")
@@ -169,8 +183,10 @@ def main():
         help="Category name to organize your uploads (will create a folder on Gofile)",
     )
     parser.add_argument(
-        "-r", "--recursive", action="store_true", 
-        help="Recursively upload files in directories"
+        "-r",
+        "--recursive",
+        action="store_true",
+        help="Recursively upload files in directories",
     )
     parser.add_argument(
         "-q", "--quiet", action="store_true", help="Suppress summary output"
@@ -221,21 +237,24 @@ def main():
         help="Sort order: asc (ascending) or desc (descending), default is ascending",
     )
     parser.add_argument(
-        "-p", "--page",
+        "-p",
+        "--page",
         type=int,
         default=1,
         help="Page number for file listings (default: 1)",
     )
     parser.add_argument(
-        "-mfn", "--max-filename",
-        nargs='?',
+        "-mfn",
+        "--max-filename",
+        nargs="?",
         type=int,
         const=80,  # Default when flag is used without value
         default=None,  # Default when flag is not used at all
         help="Maximum filename width in characters (default: no limit, 80 if flag is used without value, 0 for no limit)",
     )
     parser.add_argument(
-        "-col", "--columns",
+        "-col",
+        "--columns",
         type=str,
         help="Comma-separated list of columns to display (id,name,category,size,date,expiry,link)",
     )
@@ -271,7 +290,7 @@ def main():
     if args.purge_files:
         purge_category_files(db_manager, args.purge_files)
         return
-        
+
     # Handle clear orphaned files request
     if args.clear:
         clear_orphaned_files(db_manager)
@@ -288,22 +307,26 @@ def main():
         sort_field = args.sort if hasattr(args, "sort") else None
         sort_order = args.order if hasattr(args, "order") else "asc"
         page = max(1, args.page) if hasattr(args, "page") else 1
-        max_filename = args.max_filename if hasattr(args, "max_filename") and args.max_filename is not None else None
+        max_filename = (
+            args.max_filename
+            if hasattr(args, "max_filename") and args.max_filename is not None
+            else None
+        )
 
         # Parse columns if specified
         columns = None
         if hasattr(args, "columns") and args.columns:
             columns = [col.strip() for col in args.columns.split(",")]
-            
+
         # Use the list_files function from file_manager module
         list_files(
-            db_manager, 
-            category=category, 
-            sort_field=sort_field, 
+            db_manager,
+            category=category,
+            sort_field=sort_field,
             sort_order=sort_order,
             page=page,
             max_filename_length=max_filename,
-            columns=columns
+            columns=columns,
         )
         return
 
@@ -317,13 +340,15 @@ def main():
     if not args.files:
         parser.print_help()
         return
-        
+
     # Expand any glob patterns in the file list
     expanded_files = []
     for pattern in args.files:
         # Check if the pattern contains any glob special characters
-        if any(char in pattern for char in ['*', '?', '[']):
-            matched_files = glob.glob(pattern)
+        if any(char in pattern for char in ["*", "?", "["]):
+            # Escape special characters to treat them literally
+            safe_pattern = glob.escape(pattern)
+            matched_files = glob.glob(safe_pattern)
             if not matched_files:
                 print(f"Warning: No files found matching pattern: {pattern}")
                 continue
@@ -334,11 +359,11 @@ def main():
                 expanded_files.append(pattern)
             else:
                 print(f"Warning: File not found: {pattern}")
-    
+
     if not expanded_files:
         print("No valid files found to upload.")
         return
-    
+
     # Process directories based on recursive flag
     final_files = []
     for file_path in expanded_files:
@@ -351,14 +376,16 @@ def main():
                         final_files.append(os.path.join(root, filename))
                 print(f"Added {len(final_files)} files from directory {file_path}")
             else:
-                print(f"Skipping directory: {file_path} (use -r flag to upload directories recursively)")
+                print(
+                    f"Skipping directory: {file_path} (use -r flag to upload directories recursively)"
+                )
         else:
             final_files.append(file_path)
-    
+
     if not final_files:
         print("No valid files found to upload after directory processing.")
         return
-        
+
     # Replace the original file list with the processed one
     args.files = final_files
 

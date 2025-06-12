@@ -269,16 +269,18 @@ class GoFileClient:
                 folder_id = response_data.get("parentFolder", "")
 
                 # Log the successful upload
-                human_readable_time = format_time(upload_result['elapsed_time'])
+                human_readable_time = format_time(upload_result["elapsed_time"])
                 logger.info(
                     f"Successfully uploaded {file_name} ({upload_result['file_size_formatted']}) in "
                     f"{human_readable_time} at {upload_result['speed_formatted']}"
                 )
                 logger.info(f"Download link: {download_page}")
-                
+
                 # Print to console with colored link
-                print(f"Successfully uploaded {file_name} ({upload_result['file_size_formatted']}) in "
-                      f"{human_readable_time} at {upload_result['speed_formatted']}")
+                print(
+                    f"Successfully uploaded {file_name} ({upload_result['file_size_formatted']}) in "
+                    f"{human_readable_time} at {upload_result['speed_formatted']}"
+                )
                 print(f"Download link: {BLUE}{download_page}{END}")
 
                 # Add additional information to the result
