@@ -119,8 +119,14 @@ python gofile-uploader.py -df filename.ext   # Delete by filename
 python gofile-uploader.py -df 1              # Delete by serial ID
 python gofile-uploader.py -df abc123-456     # Delete by file ID
 
-# Remove a category (with confirmation). Does not remove files from GoFile or the database jsut the category
-python gofile-uploader.py -rm Photos
+# Remove a category (with confirmation and option to delete its files). Does not remove files from GoFile or the database jsut the category
+python -m gofile_uploader -rm some_category
+
+# Delete all files for a category (even if category was already removed)
+python -m gofile_uploader --purge-files some_category
+
+# Clean up all file entries for deleted categories
+python -m gofile_uploader --clear
 ```
 
 ## Configuration
