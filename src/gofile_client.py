@@ -20,7 +20,7 @@ class GoFileClient:
     """GoFile.io API client for uploading files and managing folders."""
 
     BASE_URL = "https://api.gofile.io"
-    GLOBAL_UPLOAD_URL = "https://upload.gofile.io/uploadFile"
+    GLOBAL_UPLOAD_URL = "https://upload.gofile.io/uploadfile"
 
     def __init__(self, account_token: Optional[str] = None):
         """
@@ -270,13 +270,6 @@ class GoFileClient:
 
                 # Log the successful upload
                 human_readable_time = format_time(upload_result["elapsed_time"])
-                logger.info(
-                    f"Successfully uploaded {file_name} ({upload_result['file_size_formatted']}) in "
-                    f"{human_readable_time} at {upload_result['speed_formatted']}"
-                )
-                logger.info(f"Download link: {download_page}")
-
-                # Print to console with colored link
                 print(
                     f"Successfully uploaded {file_name} ({upload_result['file_size_formatted']}) in "
                     f"{human_readable_time} at {upload_result['speed_formatted']}"
