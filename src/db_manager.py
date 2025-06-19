@@ -6,7 +6,7 @@ Database manager for storing and retrieving folder information using SQLite3.
 import sqlite3
 import sys
 from datetime import datetime
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Union
 from .logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -210,17 +210,33 @@ class DatabaseManager:
             logger.error(f"Error removing category {category}: {str(e)}")
             return False
 
-    def list_categories(self) -> List[str]:
+    def list_categories(
+        self, include_folder_info: bool = False
+    ) -> Union[List[str], List[Dict[str, str]]]:
         """
         Get a list of all stored categories.
 
+        Args:
+            include_folder_info: If True, returns a list of dictionaries with category info
+                               If False, returns just a list of category names
+
         Returns:
-            List[str]: List of category names
+            If include_folder_info is False: List[str] - List of category names
+            If include_folder_info is True: List[Dict] - List of category info dictionaries
         """
         try:
             cursor = self.conn.cursor()
-            cursor.execute("SELECT name FROM categories ORDER BY name")
-            return [row[0] for row in cursor.fetchall()]
+            if include_folder_info:
+                cursor.execute(
+                    "SELECT name, folder_id, folder_code FROM categories ORDER BY name"
+                )
+                return [
+                    {"name": row[0], "folder_id": row[1], "folder_code": row[2]}
+                    for row in cursor.fetchall()
+                ]
+            else:
+                cursor.execute("SELECT name FROM categories ORDER BY name")
+                return [row[0] for row in cursor.fetchall()]
         except sqlite3.Error as e:
             logger.error(f"Error listing categories: {str(e)}")
             return []

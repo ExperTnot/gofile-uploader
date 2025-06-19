@@ -6,7 +6,7 @@ Utility functions for the GoFile uploader.
 import os
 import time
 import subprocess
-from typing import Callable
+from typing import Callable, Optional
 from tqdm import tqdm
 
 DAYS = 10  # gofile default expiry
@@ -165,9 +165,87 @@ def create_progress_bar(file_path: str, desc: str = None) -> tqdm:
         unit="B",
         unit_scale=True,
         unit_divisor=1024,
-        desc=f"Uploading {file_name}",
+        desc=f"<- {file_name}",
         bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
     )
+
+
+def resolve_category(db_manager, category_input: str) -> Optional[str]:
+    """
+    Resolve a category name, with wildcard support for partial matching.
+    If input ends with '*': Performs prefix search (e.g., 'doc*' -> 'documents')
+    Otherwise: Treats as exact category name (existing or new)
+
+    Args:
+        db_manager: DatabaseManager instance
+        category_input: Category name to resolve, can end with '*' for wildcard matching
+
+    Returns:
+        Resolved full category name, the original name (for new categories),
+        or None if unable to resolve
+    """
+    all_categories = sorted(db_manager.list_categories())
+
+    if not all_categories:
+        print("No categories found. Start uploading with -c to create categories.")
+        return None
+
+    # Check if wildcard matching is requested
+    use_wildcard = category_input.endswith("*")
+
+    if use_wildcard:
+        partial_category = category_input[:-1]
+
+        if not partial_category:
+            print("Please provide a partial category name before the * wildcard")
+            return None
+
+        matches = [cat for cat in all_categories if cat.startswith(partial_category)]
+
+        if len(matches) == 0:
+            print(f"No categories found starting with '{partial_category}'")
+            print("Use -l to list all available categories.")
+            return None
+        elif len(matches) == 1:
+            resolved_category = matches[0]
+            return resolved_category
+        elif len(matches) <= 10:
+            print(f"Multiple categories found starting with '{partial_category}':")
+            for i, category in enumerate(matches, 1):
+                print(f"{i:>3}. {category}")
+
+            while True:
+                selection = input("Enter number to select category or 'q' to quit: ")
+
+                if selection.lower() == "q":
+                    return None
+
+                try:
+                    index = int(selection) - 1
+                    if 0 <= index < len(matches):
+                        return matches[index]
+                    else:
+                        print(
+                            f"Invalid selection. Please enter a number between 1 and {len(matches)}"
+                        )
+                except ValueError:
+                    print("Invalid input. Please enter a number or 'q' to quit")
+        else:
+            print(f"Too many categories match '{partial_category}*' ({len(matches)})")
+            print(
+                "Please provide a more specific category name or use -l to list all categories."
+            )
+            return None
+    else:
+        # Not using wildcard - check for exact match first
+        exact_match = next(
+            (cat for cat in all_categories if cat == category_input), None
+        )
+        if exact_match:
+            return exact_match
+
+        # No exact match and no wildcard - treat as new category name
+        return category_input
 
 
 def upload_with_progress(file_path: str, upload_func, desc: str = None):
@@ -292,12 +370,7 @@ def upload_with_progress(file_path: str, upload_func, desc: str = None):
 
             # Re-raise the interrupt for the main handler
             raise
-        except Exception as e:
-            # Log the specific exception
-            import traceback
-
-            pbar.write(f"\nError during upload: {str(e)}")
-            pbar.write(traceback.format_exc())
+        except Exception:
             # Ensure progress bar is properly closed
             pbar.close()
             raise

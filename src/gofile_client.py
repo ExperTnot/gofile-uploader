@@ -186,7 +186,7 @@ class GoFileClient:
 
         try:
             # Using the global upload endpoint which works better for folder management
-            url = "https://upload.gofile.io/uploadFile"
+            url = self.GLOBAL_UPLOAD_URL
             original_file_name = os.path.basename(file_path)
 
             # Sanitize the filename for upload
@@ -205,11 +205,6 @@ class GoFileClient:
 
                 # Create session for connection pooling
                 session = requests.Session()
-
-                # Get total file size for progress tracking (used by progress bar)
-                # We don't need to use this directly as the MultipartEncoderMonitor handles it
-
-                # Import what we need for the upload
 
                 # Get MIME type using Python's built-in mimetypes
                 mime_type, _ = mimetypes.guess_type(filename)
@@ -248,9 +243,8 @@ class GoFileClient:
                     # Catch interrupt here to cancel the request
                     session.close()
                     raise
-                except Exception as e:
+                except Exception:
                     # Log the error and rethrow
-                    logger.error(f"Error during upload: {str(e)}")
                     session.close()
                     raise
 
