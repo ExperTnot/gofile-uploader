@@ -11,56 +11,76 @@ import os
 import json
 import mimetypes
 import argparse
-import glob    
+import glob
 import shutil
+from requests.exceptions import HTTPError
 from datetime import datetime, timedelta
 from .gofile_client import GoFileClient
 from .db_manager import DatabaseManager
 from .logging_utils import setup_logging, get_logger
 from .config import config
 from .file_manager import handle_file_deletion, list_files
-from .utils import is_mpegts_file, DAYS, BLUE, END
+from .utils import is_mpegts_file, DAYS, BLUE, END, resolve_category
 
 # Get logger for this module
 logger = get_logger(__name__)
 
 
 def list_categories(db_manager):
-    """List all available categories in a multi-column layout."""
-    
-    categories = sorted(db_manager.list_categories())
-    if not categories:
+    """List all available categories with their folder links in a multi-column layout."""
+    categories_info = db_manager.list_categories(include_folder_info=True)
+    if not categories_info:
         print("No categories found. Start uploading with -c to create categories.")
         return
-    
+
     print("Available categories:")
-    
-    # Get terminal width (fallback to 80 if can't determine)
+
     try:
         term_width = shutil.get_terminal_size().columns
-    except (AttributeError, OSError):
+    except (AttributeError, ImportError, OSError):
         term_width = 90
-    
-    # Find the longest category name for spacing
-    if not categories:
-        return
-    max_len = max(len(category) for category in categories) + 2  # +2 for some padding
-    
-    # Calculate how many columns we can fit
-    num_cols = max(1, term_width // max_len)
-    
-    # Calculate how many rows we need
-    num_rows = (len(categories) + num_cols - 1) // num_cols  # Ceiling division
-    
-    # Print categories in columns
+
+    formatted_entries = []
+    max_width = 0
+
+    for category in categories_info:
+        name = category["name"]
+        folder_code = category["folder_code"]
+
+        if folder_code:
+            folder_link = f"{BLUE}https://gofile.io/d/{folder_code}{END}"
+        else:
+            folder_link = "<No folder link>"
+
+        entry_width = max(len(name), len(folder_link) - len(BLUE) - len(END)) + 4
+        max_width = max(max_width, entry_width)
+
+        formatted_entries.append((name, folder_link))
+
+    num_cols = max(1, term_width // max_width)
+
+    num_rows = (len(formatted_entries) + num_cols - 1) // num_cols
+
     for row in range(num_rows):
-        line = ""
+        name_line = ""
         for col in range(num_cols):
             idx = col * num_rows + row
-            if idx < len(categories):
-                # Format each category with proper spacing
-                line += f"{categories[idx]:{max_len}}" 
-        print(line)
+            if idx < len(formatted_entries):
+                name = formatted_entries[idx][0]
+                name_line += f"{name:{max_width}}"
+        print(name_line)
+
+        url_line = ""
+        for col in range(num_cols):
+            idx = col * num_rows + row
+            if idx < len(formatted_entries):
+                url = formatted_entries[idx][1]
+                raw_length = (
+                    len(url) - len(BLUE) - len(END) if BLUE in url else len(url)
+                )
+                padding = max_width - raw_length
+                url_line += url + " " * padding
+        print(url_line)
 
 
 def purge_category_files(db_manager, category):
@@ -195,9 +215,6 @@ def remove_category(db_manager, category):
         return False
 
 
-# Function moved to file_manager.py
-
-
 def main():
     """Main function to handle command line arguments and start the upload."""
     parser = argparse.ArgumentParser(
@@ -208,7 +225,7 @@ def main():
     parser.add_argument(
         "-c",
         "--category",
-        help="Category name to organize your uploads (will create a folder on Gofile)",
+        help="Category name to organize your uploads (will create a folder on Gofile). Use '*' suffix (e.g., 'docs*' -> 'documents') for partial matching.",
     )
     parser.add_argument(
         "-r",
@@ -391,6 +408,14 @@ def main():
     if not expanded_files:
         print("No valid files found to upload.")
         return
+
+    # Handle category resolution if provided
+    if args.category:
+        resolved_category = resolve_category(db_manager, args.category)
+        if resolved_category is None:
+            return
+        args.category = resolved_category
+        print(f"Uploading to category: {args.category}")
 
     # Process directories based on recursive flag
     final_files = []
@@ -621,6 +646,17 @@ def main():
             logger.warning(f"Upload of {file_path} cancelled by user")
             # Do NOT add to database - return immediately
             return
+        except HTTPError as e:
+            if e.response.status_code == 500:
+                logger.error(f"Error uploading {file_path}")
+                print(
+                    "Note: This often happens when the folder doesn't exist or got deleted."
+                )
+                print(
+                    "      Please check the folder link in a browser and try again. (get folder link with -l)"
+                )
+                return
+            logger.error(f"Error uploading {file_path}", exc_info=True)
         except Exception as e:
             logger.error(f"Error uploading {file_path}", exc_info=True)
             logger.error(f"{e}")
