@@ -11,7 +11,8 @@ import os
 import json
 import mimetypes
 import argparse
-import glob
+import glob    
+import shutil
 from datetime import datetime, timedelta
 from .gofile_client import GoFileClient
 from .db_manager import DatabaseManager
@@ -25,14 +26,41 @@ logger = get_logger(__name__)
 
 
 def list_categories(db_manager):
-    """List all available categories."""
-    categories = db_manager.list_categories()
+    """List all available categories in a multi-column layout."""
+    
+    categories = sorted(db_manager.list_categories())
     if not categories:
         print("No categories found. Start uploading with -c to create categories.")
-    else:
-        print("Available categories:")
-        for category in sorted(categories):
-            print(f"  - {category}")
+        return
+    
+    print("Available categories:")
+    
+    # Get terminal width (fallback to 80 if can't determine)
+    try:
+        term_width = shutil.get_terminal_size().columns
+    except (AttributeError, OSError):
+        term_width = 90
+    
+    # Find the longest category name for spacing
+    if not categories:
+        return
+    max_len = max(len(category) for category in categories) + 2  # +2 for some padding
+    
+    # Calculate how many columns we can fit
+    num_cols = max(1, term_width // max_len)
+    
+    # Calculate how many rows we need
+    num_rows = (len(categories) + num_cols - 1) // num_cols  # Ceiling division
+    
+    # Print categories in columns
+    for row in range(num_rows):
+        line = ""
+        for col in range(num_cols):
+            idx = col * num_rows + row
+            if idx < len(categories):
+                # Format each category with proper spacing
+                line += f"{categories[idx]:{max_len}}" 
+        print(line)
 
 
 def purge_category_files(db_manager, category):
