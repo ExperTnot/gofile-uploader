@@ -321,3 +321,63 @@ class GoFileClient:
         except Exception as e:
             logger.error(f"Error getting folder content: {str(e)}")
             raise
+
+    def delete_contents(self, contents_id: str) -> bool:
+        """
+        Delete file(s) from GoFile server.
+
+        Args:
+            contents_id: Comma-separated list of content IDs to delete
+
+        Returns:
+            bool: True if deletion was successful, False otherwise
+
+        Raises:
+            Exception: If the API call fails or unauthorized
+        """
+        if not self.account_token:
+            logger.error("Account token required for deletion")
+            raise Exception("Account token required for deletion")
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.account_token}",
+                "Content-Type": "application/json",
+            }
+
+            # Prepare request body with contentsId parameter
+            data = {"contentsId": contents_id}
+
+            response = self.session.delete(
+                f"{self.BASE_URL}/contents", headers=headers, json=data
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            if result.get("status") == "ok":
+                logger.debug(f"Successfully deleted content ID(s): {contents_id}")
+                return True
+            else:
+                error_message = result.get("message", "Unknown error")
+                logger.error(f"Failed to delete content: {error_message}")
+                return False
+
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code
+            error_message = ""
+            try:
+                error_data = e.response.json()
+                error_message = error_data.get("message", str(e))
+            except ValueError:
+                error_message = str(e)
+
+            if status_code == 401 or status_code == 403:
+                logger.error(f"Unauthorized to delete this content: {error_message}")
+                raise Exception(f"Unauthorized to delete this content: {error_message}")
+            else:
+                logger.error(f"HTTP error deleting content: {error_message}")
+                raise Exception(f"Error deleting content: {error_message}")
+
+        except Exception as e:
+            logger.error(f"Error deleting content: {str(e)}")
+            raise

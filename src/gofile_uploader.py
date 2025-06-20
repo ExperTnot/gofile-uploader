@@ -11,19 +11,134 @@ import os
 import json
 import mimetypes
 import argparse
+from requests.exceptions import HTTPError
 import glob
 import shutil
-from requests.exceptions import HTTPError
 from datetime import datetime, timedelta
 from .gofile_client import GoFileClient
 from .db_manager import DatabaseManager
 from .logging_utils import setup_logging, get_logger
 from .config import config
-from .file_manager import handle_file_deletion, list_files
+from .file_manager import find_file, delete_file_from_db, list_files
 from .utils import is_mpegts_file, DAYS, BLUE, END, resolve_category
 
 # Get logger for this module
 logger = get_logger(__name__)
+
+
+def handle_file_deletion(db_manager, file_id_or_name, force=False):
+    """
+    Handle file deletion from both GoFile server and local database.
+
+    Finds the file by ID or name, confirms with the user, and performs
+    deletion from both GoFile server (unless force=True) and local database.
+
+    Args:
+        db_manager: The database manager instance
+        file_id_or_name: ID or name of file to delete
+        force: If True, only delete from local database without attempting remote deletion
+
+    Returns:
+        bool: True if deletion was successful, False otherwise
+    """
+    # Find the file to delete
+    file_info = find_file(db_manager, file_id_or_name)
+
+    if not file_info:
+        # File not found (find_file already printed an error message)
+        return False
+
+    # Display file info
+    print(file_info["info_str"])
+
+    # Get file details
+    file_data = file_info["file_data"]
+    actual_id = file_info["actual_id"]
+    name = file_info["name"]
+
+    # Get confirmation from user with appropriate message based on force flag
+    if force:
+        confirmation = input(
+            "This will ONLY delete the file record locally and NOT from GoFile servers. Are you sure? (yes/no): "
+        )
+        if confirmation.lower() != "yes":
+            print("Deletion cancelled.")
+            return False
+
+        # Delete from local database only
+        return delete_file_from_db(db_manager, actual_id, name)
+    else:
+        # Regular deletion including remote server
+        confirmation = input(
+            "Delete file from GoFile servers and local database? (yes/no): "
+        )
+        if confirmation.lower() != "yes":
+            print("Deletion cancelled.")
+            return False
+
+        # Try remote deletion first
+        try:
+            # Get necessary information for API call
+            download_link = file_data.get("download_link", "")
+            account_id = file_data.get("account_id", "")
+
+            if not account_id:
+                logger.error(
+                    f"No account token found for file '{name}'. Cannot delete from GoFile server."
+                )
+                print(
+                    f"Error: No account token found for file '{name}'. Cannot delete from GoFile server."
+                )
+                print("Use -f/--force to delete just the local database entry.")
+                return False
+
+            # Initialize GoFile client with the account token
+            client = GoFileClient(account_token=account_id)
+
+            # Try to delete file from GoFile server
+            remote_delete_success = client.delete_contents(actual_id)
+
+            if remote_delete_success:
+                logger.info(f"File '{name}' successfully deleted from GoFile server.")
+                # Now delete from local database
+                if delete_file_from_db(db_manager, actual_id, name):
+                    logger.info(f"File '{name}' successfully deleted from local database.")
+                    return True
+                else:
+                    logger.error(
+                        "File was deleted from GoFile server but could not be removed from local database."
+                    )
+                    return False
+            else:
+                logger.error(f"Failed to delete file '{name}' from GoFile server.")
+                if download_link:
+                    logger.error(
+                        f"You may need to check its status manually via your browser at: {download_link}"
+                    )
+                return False
+
+        except HTTPError as e:
+            logger.error(
+                f"HTTP error deleting file '{name}' from GoFile server: {str(e)}"
+            )
+            if e.response is not None:
+                logger.error(
+                    f"Status Code: {e.response.status_code}. Message: {e.response.text}"
+                )
+            if download_link:
+                logger.error(
+                    f"This may be because the file doesn't exist on the server.\nPlease check its status or via your browser: {download_link}"
+                )
+            return False
+        except Exception as e:
+            logger.error(
+                f"Unexpected error deleting file '{name}' from GoFile server: {str(e)}"
+            )
+            if download_link:
+                logger.error(
+                    f"You may need to check its status manually via your browser at: {download_link}"
+                )
+            return False
 
 
 def list_categories(db_manager):
@@ -98,7 +213,10 @@ def purge_category_files(db_manager, category):
 
     # Get confirmation first due to irreversible action
     confirmation = input(
-        f"This will delete {file_count} file entries for category '{category}'. This is IRREVERSIBLE. Continue? (yes/no): "
+        f"This will delete {file_count} file entries for category '{category}'. \n"
+        + "WARNING: After deletion, you will NOT be able to delete these files from the GoFile server remotely \n"
+        + "as their contentsId information will be lost from the database. \n"
+        + "This action is IRREVERSIBLE. Continue? (yes/no): "
     )
     if confirmation.lower() != "yes":
         print("File deletion cancelled.")
@@ -144,7 +262,10 @@ def clear_orphaned_files(db_manager):
         print(f"  ... and {len(orphaned_files) - 5} more")
 
     confirmation = input(
-        f"\nDo you want to delete these {len(orphaned_files)} orphaned file entries? This is IRREVERSIBLE. (yes/no): "
+        f"\nDo you want to delete these {len(orphaned_files)} orphaned file entries? \n"
+        + "WARNING: After deletion, you will NOT be able to delete these files from the GoFile server remotely \n"
+        + "as their contentsId information will be lost from the database. \n"
+        + "This action is IRREVERSIBLE. (yes/no): "
     )
     if confirmation.lower() != "yes":
         print("Cleanup cancelled.")
@@ -295,7 +416,7 @@ def main():
         type=int,
         const=80,  # Default when flag is used without value
         default=None,  # Default when flag is not used at all
-        help="Maximum filename width in characters (default: no limit, 80 if flag is used without value, 0 for no limit)",
+        help="Maximum filename width in characters (default: no limit, 80 if flag is used without value)",
     )
     parser.add_argument(
         "-col",
@@ -306,7 +427,13 @@ def main():
     parser.add_argument(
         "-df",
         "--delete-file",
-        help="Delete a file entry from the local database by ID or exact filename (Note: this won't delete the file from GoFile servers)",
+        help="Delete a file from GoFile servers and the local database by ID or exact filename",
+    )
+    parser.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="When used with --delete-file, deletes the file entry only from local database without attempting remote deletion",
     )
 
     args = parser.parse_args()
@@ -377,8 +504,7 @@ def main():
 
     # Handle file deletion if requested
     if args.delete_file:
-        # Use the handle_file_deletion function from file_manager module
-        handle_file_deletion(db_manager, args.delete_file)
+        handle_file_deletion(db_manager, args.delete_file, args.force)
         return
 
     # Verify we have files to upload

@@ -5,164 +5,153 @@ File Manager Module
 Handles file listing, sorting, and deletion functions for the GoFile uploader.
 """
 
+import logging
 import unicodedata
 from datetime import datetime, timedelta
-import logging
-from .utils import format_size, DAYS
+
+from .utils import print_dynamic_table, format_size, DAYS
 
 # Get logger
 logger = logging.getLogger("gofile_uploader")
 
 
-def confirm_and_delete_file(
-    db_manager, file_to_delete, file_id=None, file_name=None, serial_id=None
-):
+def find_file(db_manager, file_id_or_name):
     """
-    Display confirmation and handle file deletion from the database.
+    Find a file by ID, serial number, or name.
 
     Args:
         db_manager: The database manager instance
-        file_to_delete: Dict containing file information
-        file_id: Optional file ID to use for deletion
-        file_name: Optional file name to display in messages
-        serial_id: Optional serial ID to display
+        file_id_or_name: ID, serial number, or name of file to find
 
     Returns:
-        bool: True if deletion was confirmed and succeeded, False otherwise
+        dict: A dictionary containing file info and supplementary properties:
+            - file_data: The found file data dictionary
+            - actual_id: The file's unique ID in the database
+            - serial_id: The file's serial ID (if found by serial ID), or None
+            - info_str: A formatted string with file information for display
+        Returns None if no file is found or user cancels selection.
     """
-    # Use provided values or extract from file_to_delete
-    actual_id = file_id or file_to_delete["id"]
-    name = file_name or file_to_delete["name"]
+    file_to_delete = None
+    serial_id = None
+    file_id = None
+    all_files = db_manager.get_all_files()
 
-    # Print file info in a compact format
-    info_str = f"Found: '{name}' (ID: {actual_id}"
+    # Add serial IDs to all files
+    for i, file in enumerate(all_files):
+        file["serial_id"] = i + 1
+
+    # First, try to find by direct ID match
+    file_to_delete = db_manager.get_file_by_id(file_id_or_name)
+    if file_to_delete:
+        file_id = file_id_or_name
+    elif file_id_or_name.isdigit():
+        # No direct ID match, check if it's a numeric serial ID
+        serial_id = int(file_id_or_name)
+
+        # Find by serial ID
+        for file in all_files:
+            if file["serial_id"] == serial_id:
+                file_to_delete = file
+                break
+
+        if not file_to_delete:
+            print(f"No file found with ID or serial number {file_id_or_name}.")
+            return None
+    else:
+        # Try to find by exact filename - collect all matches
+        matching_files = []
+
+        for file in all_files:
+            if file["name"] == file_id_or_name:
+                matching_files.append(file)
+
+        if not matching_files:
+            print(f"No file found with name '{file_id_or_name}'")
+            return None
+
+        # If there's only one match, use it
+        if len(matching_files) == 1:
+            file_to_delete = matching_files[0]
+        else:
+            # Multiple files with the same name - ask user to select
+            print(
+                f"Multiple files found with name '{file_id_or_name}'. Please select one:"
+            )
+
+            # Prepare data for table display with sequential numbers
+            display_data = []
+            for idx, file in enumerate(matching_files, 1):
+                upload_date = file.get("upload_time", "Unknown")
+                display_data.append(
+                    {
+                        "num": idx,
+                        "category": file.get("category", "None"),
+                        "upload_date": upload_date,
+                        "name": file["name"],
+                    }
+                )
+            headers = {
+                "num": "#",
+                "category": "Category",
+                "upload_date": "Upload Date",
+                "name": "Name",
+            }
+            print_dynamic_table(display_data, headers)
+            while True:
+                choice = input(
+                    "Enter the number of the file you want to select or 'q' to cancel: "
+                ).strip()
+                if choice.lower() == "q":
+                    print("Selection cancelled.")
+                    return None
+                if choice.isdigit() and 1 <= int(choice) <= len(matching_files):
+                    file_to_delete = matching_files[int(choice) - 1]
+                    break
+                else:
+                    print(
+                        f"Invalid selection. Please enter a number between 1 and {len(matching_files)}, or 'q' to cancel:"
+                    )
+
+    # At this point, we have found the file
+    # Get file details for display
+    actual_id = file_id or file_to_delete["id"]
+    name = file_to_delete["name"]
+
+    # Prepare info string
+    info_str = f"✖ '{name}' (ID: {actual_id}"
     if serial_id:
         info_str += f", Serial: {serial_id}"
     info_str += ")"
 
     if "category" in file_to_delete and file_to_delete["category"]:
         info_str += f" in category '{file_to_delete['category']}'"
-    print(info_str)
 
-    # Simplified warning and confirmation
-    confirmation = input(
-        "Delete database entry (does not remove file from GoFile)? (yes/no): "
-    )
-    if confirmation.lower() == "yes":
-        if db_manager.delete_file(actual_id):
-            print(f"Entry for '{name}' deleted from database.")
-            return True
-        else:
-            print("Failed to delete entry from database.")
-    else:
-        print("Deletion cancelled.")
-    return False
+    # Return all the information in a dictionary
+    return {
+        "file_data": file_to_delete,
+        "actual_id": actual_id,
+        "name": name,
+        "serial_id": serial_id,
+        "info_str": info_str,
+    }
 
 
-def handle_file_deletion(db_manager, file_id_or_name):
+def delete_file_from_db(db_manager, file_id, file_name):
     """
-    Handle file deletion based on ID or name.
+    Delete a file from the local database only.
 
     Args:
         db_manager: The database manager instance
-        file_id_or_name: ID or name of file to delete
+        file_id: ID of the file to delete
+        file_name: Name of the file (for display purposes)
 
     Returns:
         bool: True if deletion was successful, False otherwise
     """
-    # First, try to find by ID (which could be either the actual file ID or a serial ID)
-    if file_id_or_name.isdigit():
-        # Could be a serial ID, let's check all files
-        serial_id = int(file_id_or_name)
-        all_files = db_manager.get_all_files()
-
-        # Add serial IDs
-        for i, file in enumerate(all_files):
-            file["serial_id"] = i + 1
-
-        # Find by serial ID
-        file_to_delete = None
-        for file in all_files:
-            if file["serial_id"] == serial_id:
-                file_to_delete = file
-                break
-
-        if file_to_delete:
-            return confirm_and_delete_file(
-                db_manager, file_to_delete, serial_id=serial_id
-            )
-        else:
-            # Try as a direct file ID
-            file = db_manager.get_file_by_id(file_id_or_name)
-            if file:
-                return confirm_and_delete_file(
-                    db_manager, file, file_id=file_id_or_name
-                )
-            else:
-                print(f"No file found with ID {file_id_or_name}.")
+    if db_manager.delete_file(file_id):
+        return True
     else:
-        # Try to find by exact filename
-        all_files = db_manager.get_all_files()
-        file_to_delete = None
-
-        for file in all_files:
-            if file["name"] == file_id_or_name:
-                file_to_delete = file
-                break
-
-        if file_to_delete:
-            return confirm_and_delete_file(
-                db_manager, file_to_delete, file_name=file_id_or_name
-            )
-        else:
-            print(f"No file found with name '{file_id_or_name}'.")
-
-    return False
-
-
-def print_dynamic_table(data, headers, max_filename_length=None):
-    """Print a dynamically sized table based on content length.
-
-    Args:
-        data: List of dictionaries containing the data to print
-        headers: Dictionary mapping column keys to header names
-        max_filename_length: Maximum length for filename column (None for no limit)
-    """
-    # Make a copy of data to avoid modifying the original
-    display_data = data.copy()
-
-    # Truncate filenames if max length is specified
-    if max_filename_length is not None and "name" in headers:
-        for row in display_data:
-            if "name" in row and len(str(row["name"])) > max_filename_length:
-                row["name"] = row["name"][: max_filename_length - 3] + "..."
-
-    # Calculate column widths based on the longest entry + spacing
-    col_widths = {col: len(header) + 2 for col, header in headers.items()}
-
-    # Find the maximum length of each column value
-    for row in display_data:
-        for col in headers.keys():
-            value = str(row.get(col, ""))
-            col_widths[col] = max(col_widths[col], len(value) + 2)
-
-    # Create format string for each row
-    format_str = " ".join([f"{{:{col_widths[col]}}}" for col in headers.keys()])
-
-    # Calculate total table width
-    total_width = (
-        sum(col_widths.values()) + len(headers) - 1
-    )  # -1 for one less space than columns
-
-    # Print the table
-    print(f"\n{'=' * total_width}")
-    print(format_str.format(*[headers[col] for col in headers.keys()]))
-    print(f"{'-' * total_width}")
-
-    for row in display_data:
-        print(format_str.format(*[str(row.get(col, "")) for col in headers.keys()]))
-
-    print(f"{'=' * total_width}\n")
+        return False
 
 
 def sort_by_name(file_entry):

@@ -165,7 +165,7 @@ def create_progress_bar(file_path: str, desc: str = None) -> tqdm:
         unit="B",
         unit_scale=True,
         unit_divisor=1024,
-        desc=f"<- {file_name}",
+        desc=f"↑ {file_name}",
         bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
     )
 
@@ -265,7 +265,7 @@ def upload_with_progress(file_path: str, upload_func, desc: str = None):
     start_time = time.time()
     file_size = os.path.getsize(file_path)
     file_name = os.path.basename(file_path)
-    desc = desc or f"Uploading {file_name}"
+    desc = desc or f"↑ {file_name}"
 
     # Create progress bar with known total size
     with tqdm(
@@ -387,3 +387,49 @@ def upload_with_progress(file_path: str, upload_func, desc: str = None):
         "file_size_formatted": format_size(file_size),
         "speed_formatted": format_speed(speed),
     }
+
+
+def print_dynamic_table(data, headers, max_filename_length=None):
+    """
+    Print a dynamically sized table based on content length.
+
+    Args:
+        data: List of dictionaries containing the data to print
+        headers: Dictionary mapping column keys to header names
+        max_filename_length: Maximum length for filename column (None for no limit)
+    """
+    # Make a copy of data to avoid modifying the original
+    display_data = data.copy()
+
+    # Truncate filenames if max length is specified
+    if max_filename_length is not None and "name" in headers:
+        for row in display_data:
+            if "name" in row and len(str(row["name"])) > max_filename_length:
+                row["name"] = row["name"][: max_filename_length - 3] + "..."
+
+    # Calculate column widths based on the longest entry + spacing
+    col_widths = {col: len(header) + 2 for col, header in headers.items()}
+
+    # Find the maximum length of each column value
+    for row in display_data:
+        for col in headers.keys():
+            value = str(row.get(col, ""))
+            col_widths[col] = max(col_widths[col], len(value) + 2)
+
+    # Create format string for each row
+    format_str = " ".join([f"{{:{col_widths[col]}}}" for col in headers.keys()])
+
+    # Calculate total table width
+    total_width = (
+        sum(col_widths.values()) + len(headers) - 1
+    )  # -1 for one less space than columns
+
+    # Print the table
+    print(f"\n{'=' * total_width}")
+    print(format_str.format(*[headers[col] for col in headers.keys()]))
+    print(f"{'-' * total_width}")
+
+    for row in display_data:
+        print(format_str.format(*[str(row.get(col, "")) for col in headers.keys()]))
+
+    print(f"{'=' * total_width}\n")

@@ -413,7 +413,7 @@ class DatabaseManager:
 
             if cursor.rowcount > 0:
                 self.conn.commit()
-                logger.info(f"Deleted file with ID: {file_id}")
+                logger.debug(f"Deleted file with ID: {file_id}")
                 return True
 
             logger.warning(f"No file found with ID: {file_id}")
