@@ -203,7 +203,6 @@ class DatabaseManager:
             cursor.execute("DELETE FROM categories WHERE name = ?", (category,))
             if cursor.rowcount > 0:
                 self.conn.commit()
-                logger.info(f"Removed category: {category}")
                 return True
             return False
         except sqlite3.Error as e:

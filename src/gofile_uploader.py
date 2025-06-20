@@ -15,6 +15,7 @@ from requests.exceptions import HTTPError
 import glob
 import shutil
 from datetime import datetime, timedelta
+import builtins
 from .gofile_client import GoFileClient
 from .db_manager import DatabaseManager
 from .logging_utils import setup_logging, get_logger
@@ -86,9 +87,6 @@ def handle_file_deletion(db_manager, file_id_or_name, force=False):
                 logger.error(
                     f"No account token found for file '{name}'. Cannot delete from GoFile server."
                 )
-                print(
-                    f"Error: No account token found for file '{name}'. Cannot delete from GoFile server."
-                )
                 print("Use -f/--force to delete just the local database entry.")
                 return False
 
@@ -102,7 +100,9 @@ def handle_file_deletion(db_manager, file_id_or_name, force=False):
                 logger.info(f"File '{name}' successfully deleted from GoFile server.")
                 # Now delete from local database
                 if delete_file_from_db(db_manager, actual_id, name):
-                    logger.info(f"File '{name}' successfully deleted from local database.")
+                    logger.info(
+                        f"File '{name}' successfully deleted from local database."
+                    )
                     return True
                 else:
                     logger.error(
@@ -198,47 +198,78 @@ def list_categories(db_manager):
         print(url_line)
 
 
-def purge_category_files(db_manager, category):
-    """Delete all file entries for a specific category from the database.
+def purge_category_files(db_manager, category_pattern, force=False):
+    """Delete all file entries for a specific category from the database and GoFile servers.
 
-    This function will delete file entries even if the category itself no longer exists.
+    This function is for purging files from a category that may or may not still exist.
+    It supports wildcard matching and respects the --force flag to skip remote deletion.
+
+    Args:
+        db_manager: The database manager instance
+        category_pattern (str): The name or pattern of the category to purge files from.
+        force (bool): If True, only delete from the local database.
     """
-    # Get count of files first to inform the user
-    files = db_manager.get_files_by_category(category)
+    category_name = resolve_category(db_manager, category_pattern)
+    if not category_name:
+        return False  # User cancelled or no match
+
+    files = db_manager.get_files_by_category(category_name)
     file_count = len(files)
 
     if file_count == 0:
-        print(f"No file entries found for category '{category}'.")
+        print(f"No files found for category '{category_name}'.")
         return False
 
-    # Get confirmation first due to irreversible action
-    confirmation = input(
-        f"This will delete {file_count} file entries for category '{category}'. \n"
-        + "WARNING: After deletion, you will NOT be able to delete these files from the GoFile server remotely \n"
-        + "as their contentsId information will be lost from the database. \n"
-        + "This action is IRREVERSIBLE. Continue? (yes/no): "
-    )
+    # Get confirmation for the irreversible action
+    if force:
+        message = f"This will delete {file_count} file entries for category '{category_name}' from the LOCAL DATABASE ONLY. \n"
+        message += "Files will remain on the GoFile server and cannot be deleted remotely after this action. \n"
+    else:
+        message = f"This will attempt to delete {file_count} files for category '{category_name}' from GoFile servers. \n"
+        message += "Files will be removed from the local database ONLY IF they are successfully deleted from the GoFile server. \n"
+
+    message += "This action is IRREVERSIBLE. Continue? (yes/no): "
+
+    confirmation = input(message)
     if confirmation.lower() != "yes":
-        print("File deletion cancelled.")
+        print("Purge cancelled.")
         return False
 
-    # Get final confirmation due to irreversible action
-    final_confirm = input(
-        f"Are you ABSOLUTELY sure you want to delete {file_count} file entries? (yes/no): "
+    # Process each file individually using handle_file_deletion
+    deleted_count = 0
+    failed_count = 0
+    print(f"\nDeleting {file_count} files from category '{category_name}'...")
+
+    original_input = builtins.input
+    try:
+        for file in files:
+            file_id = file["id"]
+            builtins.input = lambda prompt: "yes"  # Auto-confirm for this iteration
+
+            try:
+                result = handle_file_deletion(db_manager, file_id, force)
+                if result:
+                    deleted_count += 1
+                else:
+                    failed_count += 1
+            except Exception as e:
+                logger.error(f"Error deleting file {file_id}: {str(e)}")
+                failed_count += 1
+    finally:
+        builtins.input = original_input
+
+    print(
+        f"\nOperation completed: {deleted_count} files deleted, {failed_count} failed."
     )
-    if final_confirm.lower() != "yes":
-        print("File deletion cancelled.")
-        return False
-
-    deleted_count = db_manager.delete_files_by_category(category)
-    print(f"Deleted {deleted_count} file entries for category '{category}'.")
-    return True
+    return deleted_count > 0
 
 
-def clear_orphaned_files(db_manager):
-    """Remove all file entries from the database whose categories no longer exist.
+def clear_orphaned_files(db_manager, force=False):
+    """Remove all file entries whose categories no longer exist from both GoFile server and database.
 
-    This is an irreversible action that requires confirmation.
+    Args:
+        db_manager: The database manager instance
+        force: If True, only delete from local database without attempting remote deletion
     """
     # First, get all files and check which ones have orphaned categories
     all_files = db_manager.get_all_files()
@@ -261,12 +292,17 @@ def clear_orphaned_files(db_manager):
     if len(orphaned_files) > 5:
         print(f"  ... and {len(orphaned_files) - 5} more")
 
-    confirmation = input(
-        f"\nDo you want to delete these {len(orphaned_files)} orphaned file entries? \n"
-        + "WARNING: After deletion, you will NOT be able to delete these files from the GoFile server remotely \n"
-        + "as their contentsId information will be lost from the database. \n"
-        + "This action is IRREVERSIBLE. (yes/no): "
-    )
+    # Display appropriate message based on the force flag
+    if force:
+        message = f"\nThis will delete these {len(orphaned_files)} orphaned file entries from the LOCAL DATABASE ONLY. \n"
+        message += "Files will remain on the GoFile server and cannot be deleted remotely after this action. \n"
+    else:
+        message = f"\nThis will attempt to delete {len(orphaned_files)} orphaned files from GoFile servers. \n"
+        message += "Files will be removed from the local database ONLY IF they are successfully deleted from the GoFile server. \n"
+
+    message += "This action is IRREVERSIBLE. (yes/no): "
+
+    confirmation = input(message)
     if confirmation.lower() != "yes":
         print("Cleanup cancelled.")
         return False
@@ -277,62 +313,141 @@ def clear_orphaned_files(db_manager):
         print("Cleanup cancelled.")
         return False
 
-    # Delete files by category
+    # Process each file individually using handle_file_deletion
     deleted_count = 0
-    orphaned_categories = set(file["category"] for file in orphaned_files)
+    failed_count = 0
+    print(f"\nDeleting {len(orphaned_files)} orphaned files...")
 
-    for category in orphaned_categories:
-        count = db_manager.delete_files_by_category(category)
-        deleted_count += count
-        print(f"Deleted {count} file entries for orphaned category '{category}'")
+    # Group files by category for better output organization
+    files_by_category = {}
+    for file in orphaned_files:
+        category = file["category"]
+        if category not in files_by_category:
+            files_by_category[category] = []
+        files_by_category[category].append(file)
 
-    print(f"\nTotal: {deleted_count} orphaned file entries removed successfully.")
-    return True
+    # Original input function to restore later
+    original_input = builtins.input
 
+    try:
+        # Process each category
+        for category, files in files_by_category.items():
+            print(
+                f"\nProcessing {len(files)} files from orphaned category '{category}'..."
+            )
+            category_success = 0
+            category_failed = 0
 
-def remove_category(db_manager, category):
-    """Remove a category and optionally its associated files from the database."""
-    # Get confirmation first
-    confirmation = input(
-        f"Are you sure you want to remove category '{category}'? (yes/no): "
+            for file in files:
+                file_id = file["id"]
+
+                # Skip confirmation since we already got it for this iteration
+                builtins.input = lambda prompt: "yes"  # Auto-confirm
+
+                try:
+                    result = handle_file_deletion(db_manager, file_id, force)
+                    if result:
+                        deleted_count += 1
+                        category_success += 1
+                    else:
+                        failed_count += 1
+                        category_failed += 1
+                except Exception as e:
+                    logger.error(f"Error deleting file {file_id}: {str(e)}")
+                    failed_count += 1
+                    category_failed += 1
+
+            print(
+                f"Completed: {category_success} deleted, {category_failed} failed for category '{category}'"
+            )
+    finally:
+        builtins.input = original_input
+
+    # Print summary
+    print(
+        f"\nTotal: {deleted_count} orphaned file entries removed successfully, {failed_count} failed."
     )
-    if confirmation.lower() != "yes":
+    return deleted_count > 0
+
+
+def remove_category(db_manager, category_pattern, force=False):
+    """Remove a category and optionally its associated files from the database and GoFile servers.
+
+    Supports wildcard matching (e.g. Test*) for partial matching using resolve_category.
+    Respects the --force flag to skip remote deletion.
+
+    Args:
+        db_manager: The database manager instance
+        category_pattern: The category name or pattern to remove
+        force (bool): If True, only delete from the local database.
+    """
+    category_name = resolve_category(db_manager, category_pattern)
+    if not category_name:
+        return False  # Exited by user or no match found
+
+    # Confirm removal of the category itself
+    confirm_cat_removal = input(
+        f"Are you sure you want to remove category '{category_name}'? (yes/no): "
+    )
+    if confirm_cat_removal.lower() != "yes":
         print("Category removal cancelled.")
         return False
 
-    # Ask if user also wants to delete all files in this category
-    delete_files = input(
-        f"Do you also want to delete all file entries for '{category}'? This is IRREVERSIBLE. (yes/no): "
-    )
-
-    if delete_files.lower() == "yes":
-        # Get count of files first to inform the user
-        files = db_manager.get_files_by_category(category)
-        file_count = len(files)
-
-        if file_count > 0:
-            # Get final confirmation due to irreversible action
-            final_confirm = input(
-                f"This will delete {file_count} file entries for category '{category}'. Are you ABSOLUTELY sure? (yes/no): "
-            )
-
-            if final_confirm.lower() == "yes":
-                deleted_count = db_manager.delete_files_by_category(category)
-                print(
-                    f"Deleted {deleted_count} file entries for category '{category}'."
-                )
+    # Check for associated files and ask about deleting them
+    files_to_delete = db_manager.get_files_by_category(category_name)
+    if files_to_delete:
+        delete_files_confirm = input(
+            f"Category '{category_name}' contains {len(files_to_delete)} file(s). Do you want to delete them as well? (yes/no): "
+        )
+        if delete_files_confirm.lower() == "yes":
+            # Display appropriate message based on the force flag
+            if force:
+                message = f"This will delete {len(files_to_delete)} file entries for category '{category_name}' from the LOCAL DATABASE ONLY. \n"
+                message += "Files will remain on the GoFile server and cannot be deleted remotely after this action. \n"
             else:
-                print("File deletion cancelled.")
-                # Still proceed with category removal
-        else:
-            print(f"No file entries found for category '{category}'.")
+                message = f"This will attempt to delete {len(files_to_delete)} files for category '{category_name}' from GoFile servers. \n"
+                message += "Files will be removed from the local database ONLY IF they are successfully deleted from the GoFile server. \n"
 
-    # Now remove the category itself
-    if db_manager.remove_category(category):
-        print(f"Category '{category}' removed successfully.")
+            message += "This action is IRREVERSIBLE. Continue? (yes/no): "
+
+            confirmation = input(message)
+            if confirmation.lower() == "yes":
+                deleted_count = 0
+                failed_count = 0
+                print(
+                    f"\nDeleting {len(files_to_delete)} files for category '{category_name}'..."
+                )
+
+                original_input = builtins.input
+                try:
+                    for file in files_to_delete:
+                        file_id = file["id"]
+                        builtins.input = lambda prompt: "yes"  # Auto-confirm
+
+                        try:
+                            result = handle_file_deletion(db_manager, file_id, force)
+                            if result:
+                                deleted_count += 1
+                            else:
+                                failed_count += 1
+                        except Exception as e:
+                            logger.error(
+                                f"Error deleting file {file['name']} ({file_id}): {str(e)}"
+                            )
+                            failed_count += 1
+                finally:
+                    builtins.input = original_input
+
+                print(
+                    f"\nOperation completed: {deleted_count} files deleted, {failed_count} failed."
+                )
+
+    # Remove the category itself from the database
+    if db_manager.remove_category(category_name):
+        print(f"Category '{category_name}' removed successfully.")
         return True
     else:
-        print(f"Failed to remove category '{category}'. Category may not exist.")
+        logger.error(f"Failed to remove category '{category_name}'.")
         return False
 
 
@@ -375,12 +490,12 @@ def main():
         "-pf",
         "--purge-files",
         type=str,
-        help="Delete all file entries for a specific category from database (irreversible, requires confirmation)",
+        help="Delete all file entries for a specific category from database and GoFile servers (irreversible, requires confirmation)",
     )
     parser.add_argument(
         "--clear",
         action="store_true",
-        help="Remove all file entries for which the associated categories have been deleted (irreversible, requires confirmation)",
+        help="Remove all file entries from GoFile servers and the local database for which the associated categories have been deleted (irreversible, requires confirmation)",
     )
     parser.add_argument(
         "-lf",
@@ -433,7 +548,7 @@ def main():
         "-f",
         "--force",
         action="store_true",
-        help="When used with --delete-file, deletes the file entry only from local database without attempting remote deletion",
+        help="When used with -df, -pf, -rm and --clear, deletes the file entry only from local database without attempting remote deletion",
     )
 
     args = parser.parse_args()
@@ -460,17 +575,17 @@ def main():
 
     # Handle purge files for a category request
     if args.purge_files:
-        purge_category_files(db_manager, args.purge_files)
+        purge_category_files(db_manager, args.purge_files, args.force)
         return
 
     # Handle clear orphaned files request
     if args.clear:
-        clear_orphaned_files(db_manager)
+        clear_orphaned_files(db_manager, args.force)
         return
 
     # Handle remove category request
     if args.remove:
-        remove_category(db_manager, args.remove)
+        remove_category(db_manager, args.remove, args.force)
         return
 
     # List uploaded files if requested
