@@ -72,14 +72,8 @@ python gofile-uploader.py -c P* /path/to/photo.jpg # This will try to automatica
 # List all available categories and their folder links
 python gofile-uploader.py -l
 
-# Upload more files to an existing category
-python gofile-uploader.py -c Photos /path/to/more_photos/*.jpg
-
 # Suppress summary output
 python gofile-uploader.py -q /path/to/your/file.ext
-
-# Show verbose output
-python gofile-uploader.py -v /path/to/your/file.ext
 
 # List all uploaded files (now with expiry date information)
 python gofile-uploader.py -lf
@@ -94,25 +88,11 @@ python gofile-uploader.py -lf -mfn 50    # Limit filenames to 50 characters
 # Pagination for large file listings
 python gofile-uploader.py -lf -p 2       # View second page of results
 
-# Combine options
-python gofile-uploader.py -lf -s date -o desc -p 2 -mfn 50  # Sort by date, page 2, 50-char filenames
-
-# Upload files using glob patterns
-python gofile-uploader.py "2025*" -c Project2025  # Upload all files starting with '2025'
-
 # Upload directory contents recursively
-python gofile-uploader.py -r /path/to/directory -c MyFiles  # Upload all files in directory and subdirectories
-
-# Combine glob patterns and recursive uploads
-python gofile-uploader.py -r "2025*/" -c Archive  # Upload all files in directories starting with '2025'
+python gofile-uploader.py -c MyFiles -r /path/to/directory  # Upload all files in directory and subdirectories
 
 # Sort file listings by various criteria
-python gofile-uploader.py -lf -s name     # Sort by filename
-python gofile-uploader.py -lf -s size     # Sort by file size
-python gofile-uploader.py -lf -s date     # Sort by upload date
-python gofile-uploader.py -lf -s expiry   # Sort by expiry date
-python gofile-uploader.py -lf -s category # Sort by category
-python gofile-uploader.py -lf -s link     # Sort by download link
+python gofile-uploader.py -lf -s name     # Sort by on of name, size, date, expiry, category, link
 
 # Change sort order (default is ascending)
 python gofile-uploader.py -lf -s size -o desc  # Sort by size in descending order
@@ -120,16 +100,21 @@ python gofile-uploader.py -lf -s size -o desc  # Sort by size in descending orde
 # Select specific columns to display
 python gofile-uploader.py -lf -col id,name,size      # Show only ID, filename and size
 
+# Combine options
+python gofile-uploader.py -lf -s date -o desc -p 2 -mfn 50  # Sort by date, page 2, 50-char filenames
+
 # Delete a file entry from the database
 python gofile-uploader.py -df filename.ext   # Delete by filename
 python gofile-uploader.py -df 1              # Delete by serial ID
-python gofile-uploader.py -df abc123-456     # Delete by file ID
+python gofile-uploader.py -df abc123-456...  # Delete by file ID
+
+# -rm, -dl, -pf and --clear can all use --force to skip remote deletion
 
 # Remove a category (with confirmation and option to delete its files). Does not remove files from GoFile or the database jsut the category
-python -m gofile_uploader -rm some_category
+python -m gofile_uploader -rm some_category # can be used with wildcard matching (e.g. Test*)
 
 # Delete all files for a category (even if category was already removed)
-python -m gofile_uploader --purge-files some_category
+python -m gofile_uploader --purge-files some_category # can be used with wildcard matching (e.g. Test*)
 
 # Clean up all file entries for deleted categories
 python -m gofile_uploader --clear
