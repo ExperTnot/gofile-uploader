@@ -44,6 +44,7 @@ A Python program that uploads files to GoFile.io with progress tracking, logging
   - requests
   - tqdm
   - requests-toolbelt
+  - wcwidth
 
 ## Installation
 
