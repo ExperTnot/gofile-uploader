@@ -21,7 +21,22 @@ from .db_manager import DatabaseManager
 from .logging_utils import setup_logging, get_logger
 from .config import config
 from .file_manager import find_file, delete_file_from_db, list_files
-from .utils import is_mpegts_file, DAYS, BLUE, END, resolve_category
+from .utils import (
+    is_mpegts_file,
+    DAYS,
+    BLUE,
+    END,
+    resolve_category,
+    print_info,
+    print_warning,
+    print_error,
+    print_success,
+    confirm_action,
+    print_file_count_summary,
+    print_operation_header,
+    print_file_list_summary,
+    print_confirmation_message,
+)
 
 # Get logger for this module
 logger = get_logger(__name__)
@@ -50,7 +65,7 @@ def handle_file_deletion(db_manager, file_id_or_name, force=False):
         return False
 
     # Display file info
-    print(file_info["info_str"])
+    print_warning(file_info["info_str"])
 
     # Get file details
     file_data = file_info["file_data"]
@@ -59,22 +74,18 @@ def handle_file_deletion(db_manager, file_id_or_name, force=False):
 
     # Get confirmation from user with appropriate message based on force flag
     if force:
-        confirmation = input(
-            "This will ONLY delete the file record locally and NOT from GoFile servers. Are you sure? (yes/no): "
-        )
-        if confirmation.lower() != "yes":
-            print("Deletion cancelled.")
+        message = "This will ONLY delete the file record locally and NOT from GoFile servers. Are you sure? (yes/no):"
+        if not confirm_action(message, require_yes=True):
+            print_info("Deletion cancelled.")
             return False
 
         # Delete from local database only
         return delete_file_from_db(db_manager, actual_id, name)
     else:
         # Regular deletion including remote server
-        confirmation = input(
-            "Delete file from GoFile servers and local database? (yes/no): "
-        )
-        if confirmation.lower() != "yes":
-            print("Deletion cancelled.")
+        message = "Delete file from GoFile servers and local database? (yes/no):"
+        if not confirm_action(message, require_yes=True):
+            print_info("Deletion cancelled.")
             return False
 
         # Try remote deletion first
@@ -143,12 +154,12 @@ def handle_file_deletion(db_manager, file_id_or_name, force=False):
 
 def list_categories(db_manager):
     """List all available categories with their folder links in a multi-column layout."""
-    categories_info = db_manager.list_categories(include_folder_info=True)
+    categories_info = db_manager.get_categories_info()
     if not categories_info:
-        print("No categories found. Start uploading with -c to create categories.")
+        print_info("No categories found. Start uploading with -c to create categories.")
         return
 
-    print("Available categories:")
+    print_info("Available categories:")
 
     try:
         term_width = shutil.get_terminal_size().columns
@@ -217,28 +228,20 @@ def purge_category_files(db_manager, category_pattern, force=False):
     file_count = len(files)
 
     if file_count == 0:
-        print(f"No files found for category '{category_name}'.")
+        print_info(f"No files found for category '{category_name}'.")
         return False
 
     # Get confirmation for the irreversible action
-    if force:
-        message = f"This will delete {file_count} file entries for category '{category_name}' from the LOCAL DATABASE ONLY. \n"
-        message += "Files will remain on the GoFile server and cannot be deleted remotely after this action. \n"
-    else:
-        message = f"This will attempt to delete {file_count} files for category '{category_name}' from GoFile servers. \n"
-        message += "Files will be removed from the local database ONLY IF they are successfully deleted from the GoFile server. \n"
-
-    message += "This action is IRREVERSIBLE. Continue? (yes/no): "
-
-    confirmation = input(message)
-    if confirmation.lower() != "yes":
-        print("Purge cancelled.")
+    message = print_confirmation_message("delete", file_count, f"file entries for category '{category_name}'", force)
+    
+    if not confirm_action(message):
+        print_info("Purge cancelled.")
         return False
 
     # Process each file individually using handle_file_deletion
     deleted_count = 0
     failed_count = 0
-    print(f"\nDeleting {file_count} files from category '{category_name}'...")
+    print_operation_header("Deleting", file_count, "files from category '" + category_name + "'")
 
     original_input = builtins.input
     try:
@@ -258,9 +261,7 @@ def purge_category_files(db_manager, category_pattern, force=False):
     finally:
         builtins.input = original_input
 
-    print(
-        f"\nOperation completed: {deleted_count} files deleted, {failed_count} failed."
-    )
+    print_file_count_summary(deleted_count, failed_count, "deleted")
     return deleted_count > 0
 
 
@@ -281,42 +282,28 @@ def clear_orphaned_files(db_manager, force=False):
             orphaned_files.append(file)
 
     if not orphaned_files:
-        print("No orphaned files found.")
+        print_info("No orphaned files found.")
         return False
 
+    # Display summary of orphaned files
+    print_file_list_summary(orphaned_files, show_sample=True)
+
     # Get confirmation for the irreversible action
-    print(f"Found {len(orphaned_files)} file entries with deleted categories:")
-    # Display sample of orphaned files (up to 5)
-    for i, file in enumerate(orphaned_files[:5]):
-        print(f"  - {file['name']} (Category: '{file['category']}')")
-    if len(orphaned_files) > 5:
-        print(f"  ... and {len(orphaned_files) - 5} more")
-
-    # Display appropriate message based on the force flag
-    if force:
-        message = f"\nThis will delete these {len(orphaned_files)} orphaned file entries from the LOCAL DATABASE ONLY. \n"
-        message += "Files will remain on the GoFile server and cannot be deleted remotely after this action. \n"
-    else:
-        message = f"\nThis will attempt to delete {len(orphaned_files)} orphaned files from GoFile servers. \n"
-        message += "Files will be removed from the local database ONLY IF they are successfully deleted from the GoFile server. \n"
-
-    message += "This action is IRREVERSIBLE. (yes/no): "
-
-    confirmation = input(message)
-    if confirmation.lower() != "yes":
-        print("Cleanup cancelled.")
+    message = print_confirmation_message("delete", len(orphaned_files), "orphaned file entries", force)
+    
+    if not confirm_action(message):
+        print_info("Cleanup cancelled.")
         return False
 
     # Get final confirmation
-    final_confirm = input("Are you ABSOLUTELY sure? This cannot be undone. (yes/no): ")
-    if final_confirm.lower() != "yes":
-        print("Cleanup cancelled.")
+    if not confirm_action("Are you ABSOLUTELY sure? This cannot be undone. (yes/no):"):
+        print_info("Cleanup cancelled.")
         return False
 
     # Process each file individually using handle_file_deletion
     deleted_count = 0
     failed_count = 0
-    print(f"\nDeleting {len(orphaned_files)} orphaned files...")
+    print_operation_header("Deleting", len(orphaned_files), "orphaned files")
 
     # Group files by category for better output organization
     files_by_category = {}
@@ -332,9 +319,7 @@ def clear_orphaned_files(db_manager, force=False):
     try:
         # Process each category
         for category, files in files_by_category.items():
-            print(
-                f"\nProcessing {len(files)} files from orphaned category '{category}'..."
-            )
+            print_operation_header("Processing", len(files), f"files from orphaned category '{category}'")
             category_success = 0
             category_failed = 0
 
@@ -357,16 +342,12 @@ def clear_orphaned_files(db_manager, force=False):
                     failed_count += 1
                     category_failed += 1
 
-            print(
-                f"Completed: {category_success} deleted, {category_failed} failed for category '{category}'"
-            )
+            print_info(f"Completed: {category_success} deleted, {category_failed} failed for category '{category}'")
     finally:
         builtins.input = original_input
 
     # Print summary
-    print(
-        f"\nTotal: {deleted_count} orphaned file entries removed successfully, {failed_count} failed."
-    )
+    print_file_count_summary(deleted_count, failed_count, "removed")
     return deleted_count > 0
 
 
@@ -386,37 +367,21 @@ def remove_category(db_manager, category_pattern, force=False):
         return False  # Exited by user or no match found
 
     # Confirm removal of the category itself
-    confirm_cat_removal = input(
-        f"Are you sure you want to remove category '{category_name}'? (yes/no): "
-    )
-    if confirm_cat_removal.lower() != "yes":
-        print("Category removal cancelled.")
+    if not confirm_action(f"Are you sure you want to remove category '{category_name}'? (yes/no):"):
+        print_info("Category removal cancelled.")
         return False
 
     # Check for associated files and ask about deleting them
     files_to_delete = db_manager.get_files_by_category(category_name)
     if files_to_delete:
-        delete_files_confirm = input(
-            f"Category '{category_name}' contains {len(files_to_delete)} file(s). Do you want to delete them as well? (yes/no): "
-        )
-        if delete_files_confirm.lower() == "yes":
-            # Display appropriate message based on the force flag
-            if force:
-                message = f"This will delete {len(files_to_delete)} file entries for category '{category_name}' from the LOCAL DATABASE ONLY. \n"
-                message += "Files will remain on the GoFile server and cannot be deleted remotely after this action. \n"
-            else:
-                message = f"This will attempt to delete {len(files_to_delete)} files for category '{category_name}' from GoFile servers. \n"
-                message += "Files will be removed from the local database ONLY IF they are successfully deleted from the GoFile server. \n"
-
-            message += "This action is IRREVERSIBLE. Continue? (yes/no): "
-
-            confirmation = input(message)
-            if confirmation.lower() == "yes":
+        if confirm_action(f"Category '{category_name}' contains {len(files_to_delete)} file(s). Do you want to delete them as well? (yes/no):"):
+            # Get confirmation for file deletion
+            message = print_confirmation_message("delete", len(files_to_delete), f"files for category '{category_name}'", force)
+            
+            if confirm_action(message):
                 deleted_count = 0
                 failed_count = 0
-                print(
-                    f"\nDeleting {len(files_to_delete)} files for category '{category_name}'..."
-                )
+                print_operation_header("Deleting", len(files_to_delete), f"files for category '{category_name}'")
 
                 original_input = builtins.input
                 try:
@@ -438,16 +403,14 @@ def remove_category(db_manager, category_pattern, force=False):
                 finally:
                     builtins.input = original_input
 
-                print(
-                    f"\nOperation completed: {deleted_count} files deleted, {failed_count} failed."
-                )
+                print_file_count_summary(deleted_count, failed_count, "deleted")
 
     # Remove the category itself from the database
     if db_manager.remove_category(category_name):
-        print(f"Category '{category_name}' removed successfully.")
+        print_success(f"Category '{category_name}' removed successfully.")
         return True
     else:
-        logger.error(f"Failed to remove category '{category_name}'.")
+        print_error(f"Failed to remove category '{category_name}'.")
         return False
 
 
@@ -636,7 +599,7 @@ def main():
             safe_pattern = glob.escape(pattern)
             matched_files = glob.glob(safe_pattern)
             if not matched_files:
-                print(f"Warning: No files found matching pattern: {pattern}")
+                print_warning(f"Warning: No files found matching pattern: {pattern}")
                 continue
             expanded_files.extend(matched_files)
         else:
@@ -644,10 +607,10 @@ def main():
             if os.path.exists(pattern):
                 expanded_files.append(pattern)
             else:
-                print(f"Warning: File not found: {pattern}")
+                print_warning(f"Warning: File not found: {pattern}")
 
     if not expanded_files:
-        print("No valid files found to upload.")
+        print_info("No valid files found to upload.")
         return
 
     # Handle category resolution if provided
@@ -656,7 +619,7 @@ def main():
         if resolved_category is None:
             return
         args.category = resolved_category
-        print(f"Uploading to category: {args.category}")
+        print_info(f"Uploading to category: {args.category}")
 
     # Process directories based on recursive flag
     final_files = []
@@ -668,16 +631,16 @@ def main():
                 for root, _, files in os.walk(file_path):
                     for filename in files:
                         final_files.append(os.path.join(root, filename))
-                print(f"Added {len(final_files)} files from directory {file_path}")
+                print_info(f"Added {len(final_files)} files from directory {file_path}")
             else:
-                print(
-                    f"Skipping directory: {file_path} (use -r flag to upload directories recursively)"
+                print_info(
+                    f"No files found in directory {file_path} (use -r flag to upload directories recursively)"
                 )
         else:
             final_files.append(file_path)
 
     if not final_files:
-        print("No valid files found to upload after directory processing.")
+        print_info("No valid files found to upload after directory processing.")
         return
 
     # Replace the original file list with the processed one
@@ -715,15 +678,14 @@ def main():
     for i, file_path in enumerate(args.files):
         # Check if file is MPEG-TS format
         if is_mpegts_file(file_path):
-            print(
-                f"WARNING: '{os.path.basename(file_path)}' appears to be an MPEG-TS (.ts) file."
+            print_warning(
+                f"'{os.path.basename(file_path)}' appears to be an MPEG-TS (.ts) file."
             )
-            print(
+            print_warning(
                 "These files may not play correctly in browsers when shared via GoFile."
             )
-            confirmation = input("Do you still want to upload this file? (yes/no): ")
-            if confirmation.lower() != "yes":
-                print(f"Skipping '{os.path.basename(file_path)}'")
+            if not confirm_action("Do you still want to upload this file? (yes/no):", require_yes=False):
+                print_info(f"Skipping '{os.path.basename(file_path)}'")
                 skipped_files.append(file_path)
                 logger.info(f"Skipping MPEG-TS file: {file_path} based on user request")
 

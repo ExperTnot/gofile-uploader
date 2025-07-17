@@ -215,21 +215,25 @@ def resolve_category(db_manager, category_input: str) -> Optional[str]:
                 print(f"{i:>3}. {category}")
 
             while True:
-                selection = input("Enter number to select category or 'q' to quit: ")
-
-                if selection.lower() == "q":
-                    return None
-
                 try:
-                    index = int(selection) - 1
-                    if 0 <= index < len(matches):
-                        return matches[index]
-                    else:
-                        print(
-                            f"Invalid selection. Please enter a number between 1 and {len(matches)}"
-                        )
-                except ValueError:
-                    print("Invalid input. Please enter a number or 'q' to quit")
+                    selection = input("Enter number to select category or 'q' to quit: ")
+
+                    if selection.lower() == "q":
+                        return None
+
+                    try:
+                        index = int(selection) - 1
+                        if 0 <= index < len(matches):
+                            return matches[index]
+                        else:
+                            print(
+                                f"Invalid selection. Please enter a number between 1 and {len(matches)}"
+                            )
+                    except ValueError:
+                        print("Invalid input. Please enter a number or 'q' to quit")
+                except KeyboardInterrupt:
+                    print("\nCategory selection cancelled.")
+                    return None
         else:
             print(f"Too many categories match '{partial_category}*' ({len(matches)})")
             print(
@@ -433,3 +437,226 @@ def print_dynamic_table(data, headers, max_filename_length=None):
         print(format_str.format(*[str(row.get(col, "")) for col in headers.keys()]))
 
     print(f"{'=' * total_width}\n")
+
+
+def print_info(message: str, prefix: str = "INFO") -> None:
+    """
+    Print an informational message with consistent formatting.
+    
+    Args:
+        message: The message to display
+        prefix: Optional prefix for the message
+    """
+    print(f"[{prefix}] {message}")
+
+
+def print_warning(message: str) -> None:
+    """
+    Print a warning message with consistent formatting.
+    
+    Args:
+        message: The warning message to display
+    """
+    print(f"[WARNING] {message}")
+
+
+def print_error(message: str) -> None:
+    """
+    Print an error message with consistent formatting.
+    
+    Args:
+        message: The error message to display
+    """
+    print(f"[ERROR] {message}")
+
+
+def print_success(message: str) -> None:
+    """
+    Print a success message with consistent formatting.
+    
+    Args:
+        message: The success message to display
+    """
+    print(f"[SUCCESS] {message}")
+
+
+def print_separator(char: str = "=", width: int = 50) -> None:
+    """
+    Print a separator line.
+    
+    Args:
+        char: Character to use for the separator
+        width: Width of the separator line
+    """
+    print(char * width)
+
+
+def confirm_action(message: str, require_yes: bool = True) -> bool:
+    """
+    Get user confirmation for an action with consistent formatting.
+    
+    Args:
+        message: The confirmation message to display
+        require_yes: If True, require exact 'yes' response; if False, accept 'y' or 'yes'
+    
+    Returns:
+        bool: True if user confirmed, False otherwise
+    """
+    try:
+        response = input(f"{message} ").strip().lower()
+        if require_yes:
+            return response == "yes"
+        else:
+            return response in ["y", "yes"]
+    except (KeyboardInterrupt, EOFError):
+        print("\nOperation cancelled.")
+        return False
+
+
+def print_file_count_summary(deleted: int, failed: int, operation: str = "processed") -> None:
+    """
+    Print a standardized summary of file operation results.
+    
+    Args:
+        deleted: Number of files successfully processed
+        failed: Number of files that failed
+        operation: Description of the operation performed
+    """
+    total = deleted + failed
+    print(f"\nOperation completed: {deleted}/{total} files {operation} successfully")
+    if failed > 0:
+        print(f"  - {failed} files failed")
+
+
+def print_operation_header(operation: str, count: int, target: str = "files") -> None:
+    """
+    Print a standardized header for batch operations.
+    
+    Args:
+        operation: Description of the operation (e.g., "Deleting", "Processing")
+        count: Number of items being processed
+        target: Type of items being processed (e.g., "files", "categories")
+    """
+    print(f"\n{operation} {count} {target}...")
+
+
+def print_multi_column_list(items: list, headers: list = None, term_width: int = None) -> None:
+    """
+    Print a list of items in multiple columns with consistent formatting.
+    
+    Args:
+        items: List of items to display (strings or tuples for multi-column)
+        headers: Optional headers for columns
+        term_width: Terminal width (auto-detected if None)
+    """
+    if not items:
+        print("No items to display.")
+        return
+    
+    try:
+        import shutil
+        if term_width is None:
+            term_width = shutil.get_terminal_size().columns
+    except (AttributeError, ImportError, OSError):
+        term_width = 90
+    
+    # Handle single column items
+    if isinstance(items[0], str):
+        items = [(item,) for item in items]
+    
+    # Calculate column width based on the longest item
+    max_width = 0
+    for item_tuple in items:
+        for item in item_tuple:
+            # Handle colored text by removing ANSI codes for width calculation
+            clean_item = item.replace(BLUE, "").replace(END, "") if isinstance(item, str) else str(item)
+            max_width = max(max_width, len(clean_item))
+    
+    max_width += 4  # Add padding
+    num_cols = max(1, term_width // max_width)
+    num_rows = (len(items) + num_cols - 1) // num_cols
+    
+    # Print headers if provided
+    if headers:
+        print("\n" + " ".join(f"{header:{max_width}}" for header in headers[:num_cols]))
+        print("-" * (max_width * min(num_cols, len(headers))))
+    
+    # Print items in columns
+    for row in range(num_rows):
+        lines = ["" for _ in range(len(items[0]))]
+        
+        for col in range(num_cols):
+            idx = col * num_rows + row
+            if idx < len(items):
+                item_tuple = items[idx]
+                for line_idx, item in enumerate(item_tuple):
+                    # Calculate padding for colored text
+                    clean_item = item.replace(BLUE, "").replace(END, "") if isinstance(item, str) else str(item)
+                    padding = max_width - len(clean_item)
+                    lines[line_idx] += str(item) + "" * padding
+        
+        # Print all lines for this row
+        for line in lines:
+            if line.strip():  # Only print non-empty lines
+                print(line)
+    
+    print()  # Add spacing after the list
+
+
+def print_file_list_summary(files: list, category: str = None, show_sample: bool = True, max_sample: int = 5) -> None:
+    """
+    Print a summary of files with optional sampling for large lists.
+    
+    Args:
+        files: List of file dictionaries
+        category: Optional category name to include in the summary
+        show_sample: Whether to show a sample of files
+        max_sample: Maximum number of files to show in sample
+    """
+    if not files:
+        category_text = f" for category '{category}'" if category else ""
+        print(f"No files found{category_text}.")
+        return
+    
+    count = len(files)
+    category_text = f" for category '{category}'" if category else ""
+    print(f"Found {count} file{'s' if count != 1 else ''}{category_text}:")
+    
+    if show_sample and files:
+        for i, file in enumerate(files[:max_sample]):
+            name = file.get('name', 'Unknown')
+            category_info = f" (Category: '{file.get('category', 'Unknown')}')" if not category else ""
+            print(f"  - {name}{category_info}")
+        
+        if len(files) > max_sample:
+            print(f"  ... and {len(files) - max_sample} more")
+    
+    print()  # Add spacing
+
+
+def print_confirmation_message(action: str, count: int, target: str, force: bool = False, irreversible: bool = True) -> str:
+    """
+    Generate a standardized confirmation message for destructive operations.
+    
+    Args:
+        action: Description of the action (e.g., "delete", "remove")
+        count: Number of items affected
+        target: Description of what's being affected
+        force: Whether this is a force operation (local only)
+        irreversible: Whether to include irreversible warning
+    
+    Returns:
+        str: Formatted confirmation message
+    """
+    if force:
+        message = f"This will {action} {count} {target} from the LOCAL DATABASE ONLY.\n"
+        message += "Files will remain on the GoFile server and cannot be deleted remotely after this action.\n"
+    else:
+        message = f"This will attempt to {action} {count} {target} from GoFile servers.\n"
+        message += "Files will be removed from the local database ONLY IF they are successfully deleted from the GoFile server.\n"
+    
+    if irreversible:
+        message += "This action is IRREVERSIBLE. "
+    
+    message += "Continue? (yes/no): "
+    return message

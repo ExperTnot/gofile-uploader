@@ -98,19 +98,23 @@ def find_file(db_manager, file_id_or_name):
             }
             print_dynamic_table(display_data, headers)
             while True:
-                choice = input(
-                    "Enter the number of the file you want to select or 'q' to cancel: "
-                ).strip()
-                if choice.lower() == "q":
-                    print("Selection cancelled.")
+                try:
+                    choice = input(
+                        "Enter the number of the file you want to select or 'q' to cancel: "
+                    ).strip()
+                    if choice.lower() == "q":
+                        print("Selection cancelled.")
+                        return None
+                    if choice.isdigit() and 1 <= int(choice) <= len(matching_files):
+                        file_to_delete = matching_files[int(choice) - 1]
+                        break
+                    else:
+                        print(
+                            f"Invalid selection. Please enter a number between 1 and {len(matching_files)}, or 'q' to cancel:"
+                        )
+                except KeyboardInterrupt:
+                    print("\nSelection cancelled by user (Ctrl+C).")
                     return None
-                if choice.isdigit() and 1 <= int(choice) <= len(matching_files):
-                    file_to_delete = matching_files[int(choice) - 1]
-                    break
-                else:
-                    print(
-                        f"Invalid selection. Please enter a number between 1 and {len(matching_files)}, or 'q' to cancel:"
-                    )
 
     # At this point, we have found the file
     # Get file details for display

@@ -14,6 +14,7 @@ A Python program that uploads files to GoFile.io with progress tracking, logging
 - Category-based folder management for organizing uploads
 - Persistent storage of categories, folders, and guest account information in SQLite database
 - File tracking system with detailed upload history
+- Delete files from both GoFile servers and local database
 - Rotating log files with size management
 
 > **Important Note**  
@@ -26,12 +27,14 @@ A Python program that uploads files to GoFile.io with progress tracking, logging
 - [x] SQLite database integration
 - [x] Category-based folder management
 - [x] File tracking system
-- [x] File expiry tracking (hardcoded 14 days from upload which his minimum expiration time)
+- [x] File expiry tracking (hardcoded 10 days from upload which his minimum expiration time)
 - [x] Database entry deletion functionality
+- [x] Remote deletion of files from GoFile servers
 - [x] Sortable file listings
+- [x] Pagination for large file listings
+- [x] Category removal and management
 - [ ] Automatic retry on failed uploads
 - [ ] Send expiration date notifications
-- [ ] Pagination for large file listings
 
 ## Requirements
 
@@ -103,21 +106,24 @@ python gofile-uploader.py -lf -col id,name,size      # Show only ID, filename an
 # Combine options
 python gofile-uploader.py -lf -s date -o desc -p 2 -mfn 50  # Sort by date, page 2, 50-char filenames
 
-# Delete a file entry from the database
+# Delete a file from both GoFile server and local database
 python gofile-uploader.py -df filename.ext   # Delete by filename
 python gofile-uploader.py -df 1              # Delete by serial ID
 python gofile-uploader.py -df abc123-456...  # Delete by file ID
 
 # -rm, -dl, -pf and --clear can all use --force to skip remote deletion
 
-# Remove a category (with confirmation and option to delete its files). Does not remove files from GoFile or the database jsut the category
-python -m gofile_uploader -rm some_category # can be used with wildcard matching (e.g. Test*)
+# Remove a category (with confirmation and option to delete its files)
+# This does not remove files from GoFile or the database, just the category entry
+python gofile-uploader.py -rm some_category  # Supports wildcard matching (e.g. Test*)
 
 # Delete all files for a category (even if category was already removed)
-python -m gofile_uploader --purge-files some_category # can be used with wildcard matching (e.g. Test*)
+python gofile-uploader.py --purge-files some_category  # Supports wildcard matching (e.g. Test*)
+python gofile-uploader.py --purge-files some_category --force  # Skip remote deletion
 
 # Clean up all file entries for deleted categories
-python -m gofile_uploader --clear
+python gofile-uploader.py --clear
+python gofile-uploader.py --clear --force  # Skip remote deletion
 ```
 
 ## Configuration
@@ -184,7 +190,7 @@ This allows you to organize your uploads by categories, with each category corre
 
 ## File Expiry Tracking
 
-GoFile uploads expire after a minimum of 14 days. This tool helps you keep track of your files' minimum expiry status:
+GoFile uploads expire after a minimum of 10 days. This tool helps you keep track of your files' minimum expiry status:
 
 1. **Expiry Status Display**: When listing files with `-lf`, each file shows one of these status indicators:
    - "EXPIRED" for files past their expiration date
@@ -197,7 +203,7 @@ GoFile uploads expire after a minimum of 14 days. This tool helps you keep track
 
 4. **Database Cleanup**: Use the `-df` option to delete expired file entries from your local database
 
-> Be aware that if a folder is deleted from GoFile.io, the category will still be in the database and you will not be able to upload to it again. It will return error 500 if you try to upload to it. You can remove the category from the database using the `-rm` option.
+> **Be aware that if a folder is deleted from GoFile.io**, the category will still be in the database and you will not be able to upload to it again. It will return error 500 if you try to upload to it. You can remove the category from the database using the `-rm` option and clean up associated file entries with `--purge-files` or `--clear`.
 
 ### How It Works
 
