@@ -5,8 +5,10 @@ Utility functions for the GoFile uploader.
 
 import os
 import time
+import shutil
 import subprocess
-from typing import Callable, Optional
+import wcwidth
+from typing import Callable, Optional, List, Union
 from tqdm import tqdm
 
 DAYS = 10  # gofile default expiry
@@ -216,7 +218,9 @@ def resolve_category(db_manager, category_input: str) -> Optional[str]:
 
             while True:
                 try:
-                    selection = input("Enter number to select category or 'q' to quit: ")
+                    selection = input(
+                        "Enter number to select category or 'q' to quit: "
+                    )
 
                     if selection.lower() == "q":
                         return None
@@ -393,9 +397,49 @@ def upload_with_progress(file_path: str, upload_func, desc: str = None):
     }
 
 
-def print_dynamic_table(data, headers, max_filename_length=None):
+def get_visual_width(text) -> int:
+    """
+    Calculate the visual width of text, considering emojis and other wide characters.
+
+    Args:
+        text: The string to calculate visual width for
+
+    Returns:
+        int: The visual width of the text
+    """
+    return wcwidth.wcswidth(str(text))
+
+
+def pad_string(text, width, align="left") -> str:
+    """
+    Pad a string to the given visual width, taking into account wide characters like emojis.
+
+    Args:
+        text: The string to pad
+        width: The desired visual width
+        align: Alignment ('left', 'right', 'center')
+
+    Returns:
+        str: The padded string
+    """
+    text_str = str(text)
+    visual_width = get_visual_width(text_str)
+    padding_needed = max(0, width - visual_width)
+
+    if align == "right":
+        return " " * padding_needed + text_str
+    elif align == "center":
+        left_padding = padding_needed // 2
+        right_padding = padding_needed - left_padding
+        return " " * left_padding + text_str + " " * right_padding
+    else:  # left align
+        return text_str + " " * padding_needed
+
+
+def print_dynamic_table(data, headers, max_filename_length=None) -> None:
     """
     Print a dynamically sized table based on content length.
+    Handles wide characters like emojis correctly for proper alignment.
 
     Args:
         data: List of dictionaries containing the data to print
@@ -408,33 +452,53 @@ def print_dynamic_table(data, headers, max_filename_length=None):
     # Truncate filenames if max length is specified
     if max_filename_length is not None and "name" in headers:
         for row in display_data:
-            if "name" in row and len(str(row["name"])) > max_filename_length:
-                row["name"] = row["name"][: max_filename_length - 3] + "..."
+            if (
+                "name" in row
+                and get_visual_width(str(row["name"])) > max_filename_length
+            ):
+                # Truncate by visual width, not character count
+                name = str(row["name"])
+                truncated = ""
+                for char in name:
+                    if (
+                        get_visual_width(truncated + char + "...")
+                        <= max_filename_length
+                    ):
+                        truncated += char
+                    else:
+                        break
+                row["name"] = truncated + "..."
 
     # Calculate column widths based on the longest entry + spacing
-    col_widths = {col: len(header) + 2 for col, header in headers.items()}
+    col_widths = {col: get_visual_width(header) + 2 for col, header in headers.items()}
 
-    # Find the maximum length of each column value
+    # Find the maximum visual width of each column value
     for row in display_data:
         for col in headers.keys():
             value = str(row.get(col, ""))
-            col_widths[col] = max(col_widths[col], len(value) + 2)
-
-    # Create format string for each row
-    format_str = " ".join([f"{{:{col_widths[col]}}}" for col in headers.keys()])
+            col_widths[col] = max(col_widths[col], get_visual_width(value) + 2)
 
     # Calculate total table width
-    total_width = (
-        sum(col_widths.values()) + len(headers) - 1
-    )  # -1 for one less space than columns
+    total_width = sum(col_widths.values()) + len(headers) - 1
 
     # Print the table
     print(f"\n{'=' * total_width}")
-    print(format_str.format(*[headers[col] for col in headers.keys()]))
+
+    # Print headers with proper padding
+    header_cells = []
+    for col in headers.keys():
+        header_cells.append(pad_string(headers[col], col_widths[col]))
+    print(" ".join(header_cells))
+
     print(f"{'-' * total_width}")
 
+    # Print each row with proper padding for wide characters
     for row in display_data:
-        print(format_str.format(*[str(row.get(col, "")) for col in headers.keys()]))
+        row_cells = []
+        for col in headers.keys():
+            value = str(row.get(col, ""))
+            row_cells.append(pad_string(value, col_widths[col]))
+        print(" ".join(row_cells))
 
     print(f"{'=' * total_width}\n")
 
@@ -442,7 +506,7 @@ def print_dynamic_table(data, headers, max_filename_length=None):
 def print_info(message: str, prefix: str = "INFO") -> None:
     """
     Print an informational message with consistent formatting.
-    
+
     Args:
         message: The message to display
         prefix: Optional prefix for the message
@@ -453,7 +517,7 @@ def print_info(message: str, prefix: str = "INFO") -> None:
 def print_warning(message: str) -> None:
     """
     Print a warning message with consistent formatting.
-    
+
     Args:
         message: The warning message to display
     """
@@ -463,7 +527,7 @@ def print_warning(message: str) -> None:
 def print_error(message: str) -> None:
     """
     Print an error message with consistent formatting.
-    
+
     Args:
         message: The error message to display
     """
@@ -473,7 +537,7 @@ def print_error(message: str) -> None:
 def print_success(message: str) -> None:
     """
     Print a success message with consistent formatting.
-    
+
     Args:
         message: The success message to display
     """
@@ -483,7 +547,7 @@ def print_success(message: str) -> None:
 def print_separator(char: str = "=", width: int = 50) -> None:
     """
     Print a separator line.
-    
+
     Args:
         char: Character to use for the separator
         width: Width of the separator line
@@ -494,11 +558,11 @@ def print_separator(char: str = "=", width: int = 50) -> None:
 def confirm_action(message: str, require_yes: bool = True) -> bool:
     """
     Get user confirmation for an action with consistent formatting.
-    
+
     Args:
         message: The confirmation message to display
         require_yes: If True, require exact 'yes' response; if False, accept 'y' or 'yes'
-    
+
     Returns:
         bool: True if user confirmed, False otherwise
     """
@@ -513,10 +577,12 @@ def confirm_action(message: str, require_yes: bool = True) -> bool:
         return False
 
 
-def print_file_count_summary(deleted: int, failed: int, operation: str = "processed") -> None:
+def print_file_count_summary(
+    deleted: int, failed: int, operation: str = "processed"
+) -> None:
     """
     Print a standardized summary of file operation results.
-    
+
     Args:
         deleted: Number of files successfully processed
         failed: Number of files that failed
@@ -531,7 +597,7 @@ def print_file_count_summary(deleted: int, failed: int, operation: str = "proces
 def print_operation_header(operation: str, count: int, target: str = "files") -> None:
     """
     Print a standardized header for batch operations.
-    
+
     Args:
         operation: Description of the operation (e.g., "Deleting", "Processing")
         count: Number of items being processed
@@ -540,10 +606,13 @@ def print_operation_header(operation: str, count: int, target: str = "files") ->
     print(f"\n{operation} {count} {target}...")
 
 
-def print_multi_column_list(items: list, headers: list = None, term_width: int = None) -> None:
+def print_multi_column_list(
+    items: List[Union[str, tuple]], headers: List[str] = None, term_width: int = None
+) -> None:
     """
     Print a list of items in multiple columns with consistent formatting.
-    
+    Handles wide characters like emojis correctly for proper alignment.
+
     Args:
         items: List of items to display (strings or tuples for multi-column)
         headers: Optional headers for columns
@@ -552,61 +621,60 @@ def print_multi_column_list(items: list, headers: list = None, term_width: int =
     if not items:
         print("No items to display.")
         return
-    
+
     try:
-        import shutil
         if term_width is None:
             term_width = shutil.get_terminal_size().columns
     except (AttributeError, ImportError, OSError):
         term_width = 90
-    
+
     # Handle single column items
-    if isinstance(items[0], str):
+    if all(isinstance(item, str) for item in items):
         items = [(item,) for item in items]
-    
+
     # Calculate column width based on the longest item
     max_width = 0
     for item_tuple in items:
         for item in item_tuple:
             # Handle colored text by removing ANSI codes for width calculation
-            clean_item = item.replace(BLUE, "").replace(END, "") if isinstance(item, str) else str(item)
-            max_width = max(max_width, len(clean_item))
-    
+            clean_item = (
+                str(item).replace(BLUE, "").replace(END, "")
+                if isinstance(item, str)
+                else str(item)
+            )
+            max_width = max(max_width, get_visual_width(clean_item))
+
     max_width += 4  # Add padding
     num_cols = max(1, term_width // max_width)
     num_rows = (len(items) + num_cols - 1) // num_cols
-    
+
     # Print headers if provided
     if headers:
-        print("\n" + " ".join(f"{header:{max_width}}" for header in headers[:num_cols]))
+        header_cells = [pad_string(header, max_width) for header in headers[:num_cols]]
+        print("\n" + " ".join(header_cells))
         print("-" * (max_width * min(num_cols, len(headers))))
-    
+
     # Print items in columns
     for row in range(num_rows):
-        lines = ["" for _ in range(len(items[0]))]
-        
+        row_cells = []
+
         for col in range(num_cols):
             idx = col * num_rows + row
             if idx < len(items):
-                item_tuple = items[idx]
-                for line_idx, item in enumerate(item_tuple):
-                    # Calculate padding for colored text
-                    clean_item = item.replace(BLUE, "").replace(END, "") if isinstance(item, str) else str(item)
-                    padding = max_width - len(clean_item)
-                    lines[line_idx] += str(item) + "" * padding
-        
-        # Print all lines for this row
-        for line in lines:
-            if line.strip():  # Only print non-empty lines
-                print(line)
-    
+                item = items[idx][0]  # Get first column for this item
+                row_cells.append(pad_string(str(item), max_width))
+
+        print("".join(row_cells))
+
     print()  # Add spacing after the list
 
 
-def print_file_list_summary(files: list, category: str = None, show_sample: bool = True, max_sample: int = 5) -> None:
+def print_file_list_summary(
+    files: list, category: str = None, show_sample: bool = True, max_sample: int = 5
+) -> None:
     """
     Print a summary of files with optional sampling for large lists.
-    
+
     Args:
         files: List of file dictionaries
         category: Optional category name to include in the summary
@@ -617,34 +685,40 @@ def print_file_list_summary(files: list, category: str = None, show_sample: bool
         category_text = f" for category '{category}'" if category else ""
         print(f"No files found{category_text}.")
         return
-    
+
     count = len(files)
     category_text = f" for category '{category}'" if category else ""
     print(f"Found {count} file{'s' if count != 1 else ''}{category_text}:")
-    
+
     if show_sample and files:
         for i, file in enumerate(files[:max_sample]):
-            name = file.get('name', 'Unknown')
-            category_info = f" (Category: '{file.get('category', 'Unknown')}')" if not category else ""
+            name = file.get("name", "Unknown")
+            category_info = (
+                f" (Category: '{file.get('category', 'Unknown')}')"
+                if not category
+                else ""
+            )
             print(f"  - {name}{category_info}")
-        
+
         if len(files) > max_sample:
             print(f"  ... and {len(files) - max_sample} more")
-    
+
     print()  # Add spacing
 
 
-def print_confirmation_message(action: str, count: int, target: str, force: bool = False, irreversible: bool = True) -> str:
+def print_confirmation_message(
+    action: str, count: int, target: str, force: bool = False, irreversible: bool = True
+) -> str:
     """
     Generate a standardized confirmation message for destructive operations.
-    
+
     Args:
         action: Description of the action (e.g., "delete", "remove")
         count: Number of items affected
         target: Description of what's being affected
         force: Whether this is a force operation (local only)
         irreversible: Whether to include irreversible warning
-    
+
     Returns:
         str: Formatted confirmation message
     """
@@ -652,11 +726,13 @@ def print_confirmation_message(action: str, count: int, target: str, force: bool
         message = f"This will {action} {count} {target} from the LOCAL DATABASE ONLY.\n"
         message += "Files will remain on the GoFile server and cannot be deleted remotely after this action.\n"
     else:
-        message = f"This will attempt to {action} {count} {target} from GoFile servers.\n"
+        message = (
+            f"This will attempt to {action} {count} {target} from GoFile servers.\n"
+        )
         message += "Files will be removed from the local database ONLY IF they are successfully deleted from the GoFile server.\n"
-    
+
     if irreversible:
         message += "This action is IRREVERSIBLE. "
-    
+
     message += "Continue? (yes/no): "
     return message

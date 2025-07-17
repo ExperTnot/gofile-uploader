@@ -426,7 +426,9 @@ class DatabaseManager:
             logger.error(f"Error deleting files for category {category}: {str(e)}")
             return 0
 
-    def _get_files_with_filter(self, where_clause: str = None, params: tuple = None) -> List[Dict[str, any]]:
+    def _get_files_with_filter(
+        self, where_clause: str = None, params: tuple = None
+    ) -> List[Dict[str, any]]:
         """
         Internal method to get files with optional filtering.
 
@@ -444,7 +446,7 @@ class DatabaseManager:
                        folder_id, folder_code, category, account_id, upload_speed, upload_duration 
                 FROM files
             """
-            
+
             if where_clause:
                 query = f"{base_query} WHERE {where_clause} ORDER BY upload_time DESC"
                 cursor.execute(query, params or ())
@@ -454,20 +456,22 @@ class DatabaseManager:
 
             files = []
             for row in cursor.fetchall():
-                files.append({
-                    "id": row[0],
-                    "name": row[1],
-                    "size": row[2],
-                    "mime_type": row[3],
-                    "upload_time": row[4],
-                    "download_link": row[5],
-                    "folder_id": row[6],
-                    "folder_code": row[7],
-                    "category": row[8],
-                    "account_id": row[9],
-                    "upload_speed": row[10],
-                    "upload_duration": row[11],
-                })
+                files.append(
+                    {
+                        "id": row[0],
+                        "name": row[1],
+                        "size": row[2],
+                        "mime_type": row[3],
+                        "upload_time": row[4],
+                        "download_link": row[5],
+                        "folder_id": row[6],
+                        "folder_code": row[7],
+                        "category": row[8],
+                        "account_id": row[9],
+                        "upload_speed": row[10],
+                        "upload_duration": row[11],
+                    }
+                )
             return files
         except sqlite3.Error as e:
             logger.error(f"Error getting files: {str(e)}")
@@ -489,10 +493,12 @@ class DatabaseManager:
                 if not isinstance(category, str):
                     logger.error("Invalid category provided")
                     return 0
-                cursor.execute("SELECT COUNT(*) FROM files WHERE category = ?", (category,))
+                cursor.execute(
+                    "SELECT COUNT(*) FROM files WHERE category = ?", (category,)
+                )
             else:
                 cursor.execute("SELECT COUNT(*) FROM files")
-            
+
             result = cursor.fetchone()
             return result[0] if result else 0
         except sqlite3.Error as e:

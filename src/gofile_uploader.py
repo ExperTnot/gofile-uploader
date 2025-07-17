@@ -232,8 +232,10 @@ def purge_category_files(db_manager, category_pattern, force=False):
         return False
 
     # Get confirmation for the irreversible action
-    message = print_confirmation_message("delete", file_count, f"file entries for category '{category_name}'", force)
-    
+    message = print_confirmation_message(
+        "delete", file_count, f"file entries for category '{category_name}'", force
+    )
+
     if not confirm_action(message):
         print_info("Purge cancelled.")
         return False
@@ -241,7 +243,9 @@ def purge_category_files(db_manager, category_pattern, force=False):
     # Process each file individually using handle_file_deletion
     deleted_count = 0
     failed_count = 0
-    print_operation_header("Deleting", file_count, "files from category '" + category_name + "'")
+    print_operation_header(
+        "Deleting", file_count, "files from category '" + category_name + "'"
+    )
 
     original_input = builtins.input
     try:
@@ -289,8 +293,10 @@ def clear_orphaned_files(db_manager, force=False):
     print_file_list_summary(orphaned_files, show_sample=True)
 
     # Get confirmation for the irreversible action
-    message = print_confirmation_message("delete", len(orphaned_files), "orphaned file entries", force)
-    
+    message = print_confirmation_message(
+        "delete", len(orphaned_files), "orphaned file entries", force
+    )
+
     if not confirm_action(message):
         print_info("Cleanup cancelled.")
         return False
@@ -319,7 +325,9 @@ def clear_orphaned_files(db_manager, force=False):
     try:
         # Process each category
         for category, files in files_by_category.items():
-            print_operation_header("Processing", len(files), f"files from orphaned category '{category}'")
+            print_operation_header(
+                "Processing", len(files), f"files from orphaned category '{category}'"
+            )
             category_success = 0
             category_failed = 0
 
@@ -342,7 +350,9 @@ def clear_orphaned_files(db_manager, force=False):
                     failed_count += 1
                     category_failed += 1
 
-            print_info(f"Completed: {category_success} deleted, {category_failed} failed for category '{category}'")
+            print_info(
+                f"Completed: {category_success} deleted, {category_failed} failed for category '{category}'"
+            )
     finally:
         builtins.input = original_input
 
@@ -367,21 +377,34 @@ def remove_category(db_manager, category_pattern, force=False):
         return False  # Exited by user or no match found
 
     # Confirm removal of the category itself
-    if not confirm_action(f"Are you sure you want to remove category '{category_name}'? (yes/no):"):
+    if not confirm_action(
+        f"Are you sure you want to remove category '{category_name}'? (yes/no):"
+    ):
         print_info("Category removal cancelled.")
         return False
 
     # Check for associated files and ask about deleting them
     files_to_delete = db_manager.get_files_by_category(category_name)
     if files_to_delete:
-        if confirm_action(f"Category '{category_name}' contains {len(files_to_delete)} file(s). Do you want to delete them as well? (yes/no):"):
+        if confirm_action(
+            f"Category '{category_name}' contains {len(files_to_delete)} file(s). Do you want to delete them as well? (yes/no):"
+        ):
             # Get confirmation for file deletion
-            message = print_confirmation_message("delete", len(files_to_delete), f"files for category '{category_name}'", force)
-            
+            message = print_confirmation_message(
+                "delete",
+                len(files_to_delete),
+                f"files for category '{category_name}'",
+                force,
+            )
+
             if confirm_action(message):
                 deleted_count = 0
                 failed_count = 0
-                print_operation_header("Deleting", len(files_to_delete), f"files for category '{category_name}'")
+                print_operation_header(
+                    "Deleting",
+                    len(files_to_delete),
+                    f"files for category '{category_name}'",
+                )
 
                 original_input = builtins.input
                 try:
@@ -684,7 +707,9 @@ def main():
             print_warning(
                 "These files may not play correctly in browsers when shared via GoFile."
             )
-            if not confirm_action("Do you still want to upload this file? (yes/no):", require_yes=False):
+            if not confirm_action(
+                "Do you still want to upload this file? (yes/no):", require_yes=False
+            ):
                 print_info(f"Skipping '{os.path.basename(file_path)}'")
                 skipped_files.append(file_path)
                 logger.info(f"Skipping MPEG-TS file: {file_path} based on user request")
