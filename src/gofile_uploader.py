@@ -822,14 +822,14 @@ def main():
                     print(f"┌{'─' * 58}┐")
                     print(f"│ {'✓ Upload Complete':<56} │")
                     print(f"├{'─' * 58}┤")
-                    print(f"│ {'File:':<12} {os.path.basename(file_path):<43} │")
+                    print(f"│ {'File:':<12} {os.path.basename(file_path)[:42]:<43} │")
                     if args.category:
-                        print(f"│ {'Category:':<12} {args.category:<43} │")
+                        print(f"│ {'Category:':<12} {args.category[:42]:<43} │")
                     print(f"│ {'Size:':<12} {response_data.get('file_size_formatted', ''):<43} │")
                     print(f"│ {'Speed:':<12} {response_data.get('speed_formatted', ''):<43} │")
                     print(f"│ {'Expires:':<12} {expiry_date.strftime('%Y-%m-%d'):<43} │")
                     print(f"├{'─' * 58}┤")
-                    print(f"│ {BLUE}{download_link:<56}{END}")
+                    print(f"│ {BLUE}{download_link:<56}{END} │")
                     print(f"└{'─' * 58}┘")
             else:
                 logger.warning(
