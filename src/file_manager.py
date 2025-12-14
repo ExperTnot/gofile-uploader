@@ -140,22 +140,18 @@ def find_file(db_manager, file_id_or_name):
     }
 
 
-def delete_file_from_db(db_manager, file_id, file_name):
+def delete_file_from_db(db_manager, file_id):
     """
     Delete a file from the local database only.
 
     Args:
         db_manager: The database manager instance
         file_id: ID of the file to delete
-        file_name: Name of the file (for display purposes)
 
     Returns:
         bool: True if deletion was successful, False otherwise
     """
-    if db_manager.delete_file(file_id):
-        return True
-    else:
-        return False
+    return db_manager.delete_file(file_id)
 
 
 def sort_by_name(file_entry):

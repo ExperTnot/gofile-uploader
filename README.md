@@ -16,6 +16,9 @@ A Python program that uploads files to GoFile.io with progress tracking, logging
 - File tracking system with detailed upload history
 - Delete files from both GoFile servers and local database
 - Rotating log files with size management
+- Automatic retry on transient upload failures (network errors, server 5xx errors)
+- Dry-run mode to preview uploads without actually uploading
+- Exit codes for scripting integration
 
 > **Important Note**  
 > This tool works exclusively with temporary GoFile accounts which expire after a period of inactivity. Files uploaded using this tool will not be permanently stored and may become inaccessible after the temporary account expires. This tool is not intended for long-term file storage.
@@ -33,7 +36,7 @@ A Python program that uploads files to GoFile.io with progress tracking, logging
 - [x] Sortable file listings
 - [x] Pagination for large file listings
 - [x] Category removal and management
-- [ ] Automatic retry on failed uploads
+- [x] Automatic retry on failed uploads
 - [ ] Send expiration date notifications
 
 ## Requirements
@@ -125,6 +128,16 @@ python gofile-uploader.py --purge-files some_category --force  # Skip remote del
 # Clean up all file entries for deleted categories
 python gofile-uploader.py --clear
 python gofile-uploader.py --clear --force  # Skip remote deletion
+
+# Preview what would be uploaded without actually uploading (dry-run)
+python gofile-uploader.py --dry-run /path/to/files/*
+python gofile-uploader.py --dry-run -c MyCategory /path/to/files/*
+
+# Reset guest account (useful if uploads fail with 500 errors)
+python gofile-uploader.py --reset-account
+
+# Check version
+python gofile-uploader.py --version
 ```
 
 ## Configuration

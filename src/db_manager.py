@@ -210,6 +210,26 @@ class DatabaseManager:
             logger.error(f"Error saving guest account: {str(e)}")
             return False
 
+    def clear_guest_account(self) -> bool:
+        """
+        Clear the stored guest account token.
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM settings WHERE key = 'guest_account'")
+            self.conn.commit()
+            if cursor.rowcount > 0:
+                logger.info("Cleared guest account token")
+                return True
+            logger.debug("No guest account token was stored")
+            return False
+        except sqlite3.Error as e:
+            logger.error(f"Error clearing guest account: {str(e)}")
+            return False
+
     def remove_category(self, category: str) -> bool:
         """
         Remove a category from the database.
