@@ -11,9 +11,9 @@ import urllib.parse
 from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
 from typing import Dict, Any, Optional
 import mimetypes
-from .utils import format_time, format_size, format_speed, BLUE, END
+from src.utils import format_time, format_size, format_speed, BLUE, END
 from tqdm import tqdm
-from .logging_utils import get_logger
+from src.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
@@ -181,13 +181,21 @@ class GoFileClient:
         Returns:
             bool: True if the error is retryable, False otherwise
         """
-        if isinstance(exception, (requests.exceptions.ConnectionError,
-                                   requests.exceptions.Timeout,
-                                   requests.exceptions.ChunkedEncodingError)):
+        if isinstance(
+            exception,
+            (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                requests.exceptions.ChunkedEncodingError,
+            ),
+        ):
             return True
 
         if isinstance(exception, requests.exceptions.HTTPError):
-            if exception.response is not None and 500 <= exception.response.status_code < 600:
+            if (
+                exception.response is not None
+                and 500 <= exception.response.status_code < 600
+            ):
                 return True
 
         return False
@@ -245,7 +253,9 @@ class GoFileClient:
                     )
 
         # All retries exhausted
-        raise last_exception
+        if last_exception:
+            raise last_exception
+        raise Exception("Upload failed after all retries")
 
     def _perform_upload(
         self, file_path: str, file_name: str, url: str, folder_id: Optional[str]
@@ -255,7 +265,7 @@ class GoFileClient:
         """
         file_size = os.path.getsize(file_path)
         start_time = time.time()
-        
+
         form_data = {}
         if self.account_token:
             form_data["token"] = self.account_token
@@ -269,7 +279,7 @@ class GoFileClient:
             encoder = MultipartEncoder(
                 fields={**form_data, "file": (file_name, file_obj, mime_type)}
             )
-            
+
             with tqdm(
                 total=file_size,
                 unit="B",
@@ -279,7 +289,7 @@ class GoFileClient:
                 bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]{postfix}",
             ) as pbar:
                 last_bytes = [0]
-                
+
                 def on_progress(monitor):
                     delta = monitor.bytes_read - last_bytes[0]
                     if delta > 0:
@@ -287,17 +297,19 @@ class GoFileClient:
                         last_bytes[0] = monitor.bytes_read
                         elapsed = time.time() - start_time
                         if elapsed > 0:
-                            pbar.set_postfix_str(format_speed(monitor.bytes_read / elapsed))
+                            pbar.set_postfix_str(
+                                format_speed(monitor.bytes_read / elapsed)
+                            )
 
                 monitor = MultipartEncoderMonitor(encoder, on_progress)
-                
+
                 response = self.session.post(
                     url,
                     data=monitor,
                     headers={"Content-Type": monitor.content_type},
                 )
                 response.raise_for_status()
-                
+
                 if pbar.n < file_size:
                     pbar.update(file_size - pbar.n)
 

@@ -98,25 +98,25 @@ class TestFormatSpeed:
 class TestIsMpegtsFile:
     """Tests for MPEG-TS file detection."""
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_mpegts_detected(self, mock_run):
         """Should detect MPEG-TS files."""
         mock_run.return_value = Mock(returncode=0, stdout="mpegts\nMPEG-TS")
         assert is_mpegts_file("test.ts") is True
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_non_mpegts_file(self, mock_run):
         """Should return False for non-MPEG-TS files."""
         mock_run.return_value = Mock(returncode=0, stdout="mp4\nMP4")
         assert is_mpegts_file("test.mp4") is False
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_ffprobe_failure(self, mock_run):
         """Should return False when ffprobe fails."""
         mock_run.return_value = Mock(returncode=1, stdout="")
         assert is_mpegts_file("test.ts") is False
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_ffprobe_exception(self, mock_run):
         """Should return False on exception."""
         mock_run.side_effect = FileNotFoundError()
@@ -130,7 +130,7 @@ class TestResolveCategory:
         """Should return exact match."""
         mock_db = Mock()
         mock_db.list_categories.return_value = ["documents", "images", "videos"]
-        
+
         result = resolve_category(mock_db, "documents")
         assert result == "documents"
 
@@ -138,7 +138,7 @@ class TestResolveCategory:
         """Should return single wildcard match."""
         mock_db = Mock()
         mock_db.list_categories.return_value = ["documents", "images", "videos"]
-        
+
         result = resolve_category(mock_db, "doc*")
         assert result == "documents"
 
@@ -146,7 +146,7 @@ class TestResolveCategory:
         """Should return None when no wildcard match."""
         mock_db = Mock()
         mock_db.list_categories.return_value = ["documents", "images"]
-        
+
         result = resolve_category(mock_db, "xyz*")
         assert result is None
 
@@ -154,7 +154,7 @@ class TestResolveCategory:
         """Should return input for new category (no wildcard)."""
         mock_db = Mock()
         mock_db.list_categories.return_value = ["documents", "images"]
-        
+
         result = resolve_category(mock_db, "new_category")
         assert result == "new_category"
 
@@ -162,7 +162,7 @@ class TestResolveCategory:
         """Should return None when no categories exist."""
         mock_db = Mock()
         mock_db.list_categories.return_value = []
-        
+
         result = resolve_category(mock_db, "anything")
         assert result is None
 
@@ -170,7 +170,7 @@ class TestResolveCategory:
         """Should return None for empty wildcard prefix."""
         mock_db = Mock()
         mock_db.list_categories.return_value = ["documents"]
-        
+
         result = resolve_category(mock_db, "*")
         assert result is None
 
@@ -226,32 +226,32 @@ class TestPadString:
 class TestConfirmAction:
     """Tests for user confirmation."""
 
-    @patch('builtins.input', return_value='yes')
+    @patch("builtins.input", return_value="yes")
     def test_confirm_yes(self, mock_input):
         """Should return True for 'yes' response."""
         assert confirm_action("Confirm?") is True
 
-    @patch('builtins.input', return_value='no')
+    @patch("builtins.input", return_value="no")
     def test_confirm_no(self, mock_input):
         """Should return False for 'no' response."""
         assert confirm_action("Confirm?") is False
 
-    @patch('builtins.input', return_value='y')
+    @patch("builtins.input", return_value="y")
     def test_confirm_y_with_require_yes(self, mock_input):
         """Should return False for 'y' when require_yes=True."""
         assert confirm_action("Confirm?", require_yes=True) is False
 
-    @patch('builtins.input', return_value='y')
+    @patch("builtins.input", return_value="y")
     def test_confirm_y_without_require_yes(self, mock_input):
         """Should return True for 'y' when require_yes=False."""
         assert confirm_action("Confirm?", require_yes=False) is True
 
-    @patch('builtins.input', side_effect=KeyboardInterrupt)
+    @patch("builtins.input", side_effect=KeyboardInterrupt)
     def test_confirm_keyboard_interrupt(self, mock_input):
         """Should return False on KeyboardInterrupt."""
         assert confirm_action("Confirm?") is False
 
-    @patch('builtins.input', side_effect=EOFError)
+    @patch("builtins.input", side_effect=EOFError)
     def test_confirm_eof_error(self, mock_input):
         """Should return False on EOFError."""
         assert confirm_action("Confirm?") is False

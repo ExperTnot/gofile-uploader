@@ -39,7 +39,7 @@ def format_time(seconds: float) -> str:
         return f"{seconds}s"
 
 
-def format_size(size_bytes: int) -> str:
+def format_size(size_bytes: Union[int, float]) -> str:
     """
     Format a size in bytes to a human-readable string.
 
@@ -146,7 +146,7 @@ class ProgressFileReader:
         return chunk
 
 
-def create_progress_bar(file_path: str, desc: str = None) -> tqdm:
+def create_progress_bar(file_path: str, desc: str = "") -> tqdm:
     """
     Create a progress bar for a file upload.
 
@@ -158,7 +158,7 @@ def create_progress_bar(file_path: str, desc: str = None) -> tqdm:
         A tqdm progress bar
     """
     file_size = os.path.getsize(file_path)
-    file_name = os.path.basename(file_path) if desc is None else desc
+    file_name = os.path.basename(file_path) if not desc else desc
 
     return tqdm(
         total=file_size,
@@ -187,7 +187,9 @@ def resolve_category(db_manager, category_input: str) -> Optional[str]:
     all_categories = sorted(db_manager.list_categories())
 
     if not all_categories:
-        logger.info("No categories found. Start uploading with -c to create categories.")
+        logger.info(
+            "No categories found. Start uploading with -c to create categories."
+        )
         return None
 
     # Check if wildcard matching is requested
@@ -210,7 +212,9 @@ def resolve_category(db_manager, category_input: str) -> Optional[str]:
             resolved_category = matches[0]
             return resolved_category
         elif len(matches) <= 10:
-            logger.info(f"Multiple categories found starting with '{partial_category}':")
+            logger.info(
+                f"Multiple categories found starting with '{partial_category}':"
+            )
             for i, category in enumerate(matches, 1):
                 print(f"{i:>3}. {category}")
 
@@ -232,12 +236,16 @@ def resolve_category(db_manager, category_input: str) -> Optional[str]:
                                 f"Invalid selection. Please enter a number between 1 and {len(matches)}"
                             )
                     except ValueError:
-                        logger.warning("Invalid input. Please enter a number or 'q' to quit")
+                        logger.warning(
+                            "Invalid input. Please enter a number or 'q' to quit"
+                        )
                 except KeyboardInterrupt:
                     logger.info("Category selection cancelled.")
                     return None
         else:
-            logger.warning(f"Too many categories match '{partial_category}*' ({len(matches)})")
+            logger.warning(
+                f"Too many categories match '{partial_category}*' ({len(matches)})"
+            )
             logger.info(
                 "Please provide a more specific category name or use -l to list all categories."
             )
@@ -414,7 +422,7 @@ def print_operation_header(operation: str, count: int, target: str = "files") ->
 
 
 def print_multi_column_list(
-    items: List[Union[str, tuple]], headers: List[str] = None, term_width: int = None
+    items: List[Union[str, tuple]], headers: List[str] = [], term_width: int = -1
 ) -> None:
     """
     Print a list of items in multiple columns with consistent formatting.
@@ -430,7 +438,7 @@ def print_multi_column_list(
         return
 
     try:
-        if term_width is None:
+        if term_width == -1:
             term_width = shutil.get_terminal_size().columns
     except (AttributeError, ImportError, OSError):
         term_width = 90
@@ -472,7 +480,7 @@ def print_multi_column_list(
 
 
 def print_file_list_summary(
-    files: list, category: str = None, show_sample: bool = True, max_sample: int = 5
+    files: list, category: str = "", show_sample: bool = True, max_sample: int = 5
 ) -> None:
     """
     Print a summary of files with optional sampling for large lists.

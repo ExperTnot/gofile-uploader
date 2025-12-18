@@ -11,12 +11,12 @@ from logging.handlers import RotatingFileHandler
 
 
 def setup_logging(
-    log_folder=".",
-    log_basename="gofile",
-    max_bytes=5 * 1024 * 1024,
-    backup_count=10,
-    verbose=False,
-):
+    log_folder: str = ".",
+    log_basename: str = "gofile",
+    max_bytes: int = 5 * 1024 * 1024,
+    backup_count: int = 10,
+    verbose: bool = False,
+) -> logging.Logger:
     """
     Configure a rotating file logger with console output.
 
@@ -53,7 +53,7 @@ def setup_logging(
     return logger
 
 
-def get_logger(name):
+def get_logger(name: str) -> logging.Logger:
     """
     Get a named logger.
 

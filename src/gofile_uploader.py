@@ -16,13 +16,12 @@ from requests.exceptions import HTTPError
 import glob
 import shutil
 from datetime import datetime, timedelta
-import builtins
-from .gofile_client import GoFileClient
-from .db_manager import DatabaseManager
-from .logging_utils import setup_logging, get_logger
-from .config import config
-from .file_manager import find_file, delete_file_from_db, list_files
-from .utils import (
+from src.gofile_client import GoFileClient
+from src.db_manager import DatabaseManager
+from src.logging_utils import setup_logging, get_logger
+from src.config import config
+from src.file_manager import find_file, delete_file_from_db, list_files
+from src.utils import (
     is_mpegts_file,
     DAYS,
     BLUE,
@@ -43,7 +42,8 @@ EXIT_USAGE = 2
 
 __version__ = "0.1.0"
 
-def handle_file_deletion(db_manager, file_id_or_name, force=False):
+
+def handle_file_deletion(db_manager, file_id_or_name, force=False, auto_confirm=False):
     """
     Handle file deletion from both GoFile server and local database.
 
@@ -54,6 +54,7 @@ def handle_file_deletion(db_manager, file_id_or_name, force=False):
         db_manager: The database manager instance
         file_id_or_name: ID or name of file to delete
         force: If True, only delete from local database without attempting remote deletion
+        auto_confirm: If True, skip user confirmation prompts
 
     Returns:
         bool: True if deletion was successful, False otherwise
@@ -72,14 +73,14 @@ def handle_file_deletion(db_manager, file_id_or_name, force=False):
 
     if force:
         message = "This will ONLY delete the file record locally and NOT from GoFile servers. Are you sure? (yes/no):"
-        if not confirm_action(message, require_yes=True):
+        if not auto_confirm and not confirm_action(message, require_yes=True):
             logger.info("Deletion cancelled.")
             return False
 
-        return delete_file_from_db(db_manager, actual_id, name)
+        return delete_file_from_db(db_manager, actual_id)
     else:
         message = "Delete file from GoFile servers and local database? (yes/no):"
-        if not confirm_action(message, require_yes=True):
+        if not auto_confirm and not confirm_action(message, require_yes=True):
             logger.info("Deletion cancelled.")
             return False
 
@@ -100,7 +101,7 @@ def handle_file_deletion(db_manager, file_id_or_name, force=False):
 
             if remote_delete_success:
                 logger.info(f"File '{name}' successfully deleted from GoFile server.")
-                if delete_file_from_db(db_manager, actual_id, name):
+                if delete_file_from_db(db_manager, actual_id):
                     logger.info(
                         f"File '{name}' successfully deleted from local database."
                     )
@@ -146,7 +147,9 @@ def list_categories(db_manager):
     """List all available categories with their folder links in a multi-column layout."""
     categories_info = db_manager.get_categories_info()
     if not categories_info:
-        logger.info("No categories found. Start uploading with -c to create categories.")
+        logger.info(
+            "No categories found. Start uploading with -c to create categories."
+        )
         return
 
     logger.info("Available categories:")
@@ -235,23 +238,18 @@ def purge_category_files(db_manager, category_pattern, force=False):
         "Deleting", file_count, "files from category '" + category_name + "'"
     )
 
-    original_input = builtins.input
-    try:
-        for file in files:
-            file_id = file["id"]
-            builtins.input = lambda prompt: "yes"
+    for file in files:
+        file_id = file["id"]
 
-            try:
-                result = handle_file_deletion(db_manager, file_id, force)
-                if result:
-                    deleted_count += 1
-                else:
-                    failed_count += 1
-            except Exception as e:
-                logger.error(f"Error deleting file {file_id}: {str(e)}")
+        try:
+            result = handle_file_deletion(db_manager, file_id, force, auto_confirm=True)
+            if result:
+                deleted_count += 1
+            else:
                 failed_count += 1
-    finally:
-        builtins.input = original_input
+        except Exception as e:
+            logger.error(f"Error deleting file {file_id}: {str(e)}")
+            failed_count += 1
 
     print_file_count_summary(deleted_count, failed_count, "deleted")
     return deleted_count > 0
@@ -302,39 +300,34 @@ def clear_orphaned_files(db_manager, force=False):
             files_by_category[category] = []
         files_by_category[category].append(file)
 
-    original_input = builtins.input
+    for category, files in files_by_category.items():
+        print_operation_header(
+            "Processing", len(files), f"files from orphaned category '{category}'"
+        )
+        category_success = 0
+        category_failed = 0
 
-    try:
-        for category, files in files_by_category.items():
-            print_operation_header(
-                "Processing", len(files), f"files from orphaned category '{category}'"
-            )
-            category_success = 0
-            category_failed = 0
+        for file in files:
+            file_id = file["id"]
 
-            for file in files:
-                file_id = file["id"]
-
-                builtins.input = lambda prompt: "yes"
-
-                try:
-                    result = handle_file_deletion(db_manager, file_id, force)
-                    if result:
-                        deleted_count += 1
-                        category_success += 1
-                    else:
-                        failed_count += 1
-                        category_failed += 1
-                except Exception as e:
-                    logger.error(f"Error deleting file {file_id}: {str(e)}")
+            try:
+                result = handle_file_deletion(
+                    db_manager, file_id, force, auto_confirm=True
+                )
+                if result:
+                    deleted_count += 1
+                    category_success += 1
+                else:
                     failed_count += 1
                     category_failed += 1
+            except Exception as e:
+                logger.error(f"Error deleting file {file_id}: {str(e)}")
+                failed_count += 1
+                category_failed += 1
 
-            logger.info(
-                f"Completed: {category_success} deleted, {category_failed} failed for category '{category}'"
-            )
-    finally:
-        builtins.input = original_input
+        logger.info(
+            f"Completed: {category_success} deleted, {category_failed} failed for category '{category}'"
+        )
 
     # Print summary
     print_file_count_summary(deleted_count, failed_count, "removed")
@@ -383,25 +376,22 @@ def remove_category(db_manager, category_pattern, force=False):
                     f"files for category '{category_name}'",
                 )
 
-                original_input = builtins.input
-                try:
-                    for file in files_to_delete:
-                        file_id = file["id"]
-                        builtins.input = lambda prompt: "yes"
+                for file in files_to_delete:
+                    file_id = file["id"]
 
-                        try:
-                            result = handle_file_deletion(db_manager, file_id, force)
-                            if result:
-                                deleted_count += 1
-                            else:
-                                failed_count += 1
-                        except Exception as e:
-                            logger.error(
-                                f"Error deleting file {file['name']} ({file_id}): {str(e)}"
-                            )
+                    try:
+                        result = handle_file_deletion(
+                            db_manager, file_id, force, auto_confirm=True
+                        )
+                        if result:
+                            deleted_count += 1
+                        else:
                             failed_count += 1
-                finally:
-                    builtins.input = original_input
+                    except Exception as e:
+                        logger.error(
+                            f"Error deleting file {file['name']} ({file_id}): {str(e)}"
+                        )
+                        failed_count += 1
 
                 print_file_count_summary(deleted_count, failed_count, "deleted")
 
@@ -543,12 +533,19 @@ def main():
     db_manager = DatabaseManager(config.get("database_path"))
 
     if args.reset_account:
-        if input("Are you sure you want to reset the guest account? (yes/no): ").lower() == "yes":
+        if (
+            input(
+                "Are you sure you want to reset the guest account? (yes/no): "
+            ).lower()
+            == "yes"
+        ):
             if db_manager.clear_guest_account():
                 logger.info("Guest account token cleared successfully.")
                 logger.info("A new guest account will be created on your next upload.")
             else:
-                logger.error("Failed to clear guest account token (or none was stored).")
+                logger.error(
+                    "Failed to clear guest account token (or none was stored)."
+                )
         return
 
     if args.list:
@@ -635,7 +632,9 @@ def main():
                 for root, _, files in os.walk(file_path):
                     for filename in files:
                         final_files.append(os.path.join(root, filename))
-                logger.info(f"Added {len(final_files)} files from directory {file_path}")
+                logger.info(
+                    f"Added {len(final_files)} files from directory {file_path}"
+                )
             else:
                 logger.info(
                     f"No files found in directory {file_path} (use -r flag to upload directories recursively)"
@@ -668,7 +667,8 @@ def main():
             )
 
     if args.dry_run:
-        from .utils import format_size
+        from src.utils import format_size
+
         logger.info("=== DRY RUN MODE ===")
         logger.info(f"Would upload {len(args.files)} file(s):")
         total_size = 0
@@ -825,9 +825,15 @@ def main():
                     print(f"│ {'File:':<12} {os.path.basename(file_path)[:42]:<43} │")
                     if args.category:
                         print(f"│ {'Category:':<12} {args.category[:42]:<43} │")
-                    print(f"│ {'Size:':<12} {response_data.get('file_size_formatted', ''):<43} │")
-                    print(f"│ {'Speed:':<12} {response_data.get('speed_formatted', ''):<43} │")
-                    print(f"│ {'Expires:':<12} {expiry_date.strftime('%Y-%m-%d'):<43} │")
+                    print(
+                        f"│ {'Size:':<12} {response_data.get('file_size_formatted', ''):<43} │"
+                    )
+                    print(
+                        f"│ {'Speed:':<12} {response_data.get('speed_formatted', ''):<43} │"
+                    )
+                    print(
+                        f"│ {'Expires:':<12} {expiry_date.strftime('%Y-%m-%d'):<43} │"
+                    )
                     print(f"├{'─' * 58}┤")
                     print(f"│ {BLUE}{download_link:<56}{END} │")
                     print(f"└{'─' * 58}┘")
@@ -847,13 +853,23 @@ def main():
                 logger.error(f"Error uploading {file_path}")
                 logger.warning("This 500 error can be caused by:")
                 if folder_id:
-                    logger.warning(f"  1. The folder '{folder_id}' no longer exists on GoFile")
-                    logger.warning("     Try uploading without a category, or use -rm to remove the category")
+                    logger.warning(
+                        f"  1. The folder '{folder_id}' no longer exists on GoFile"
+                    )
+                    logger.warning(
+                        "     Try uploading without a category, or use -rm to remove the category"
+                    )
                 if guest_account:
-                    logger.warning("  2. Your stored guest account token may be invalid/expired")
-                    logger.warning("     Try: python gofile-uploader.py --reset-account")
+                    logger.warning(
+                        "  2. Your stored guest account token may be invalid/expired"
+                    )
+                    logger.warning(
+                        "     Try: python gofile-uploader.py --reset-account"
+                    )
                 if not folder_id and not guest_account:
-                    logger.warning("  - GoFile servers may be experiencing issues. Try again later.")
+                    logger.warning(
+                        "  - GoFile servers may be experiencing issues. Try again later."
+                    )
                 return EXIT_ERROR
             logger.error(f"Error uploading {file_path}", exc_info=True)
         except Exception as e:

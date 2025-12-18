@@ -62,13 +62,13 @@ class TestClientInitialization:
 class TestGetServer:
     """Tests for server selection."""
 
-    @patch.object(requests.Session, 'get')
+    @patch.object(requests.Session, "get")
     def test_get_server_success(self, mock_get, client):
         """Should return server name on success."""
         mock_response = Mock()
         mock_response.json.return_value = {
             "status": "ok",
-            "data": {"servers": [{"name": "store1"}]}
+            "data": {"servers": [{"name": "store1"}]},
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -76,23 +76,23 @@ class TestGetServer:
         server = client.get_server()
         assert server == "store1"
 
-    @patch.object(requests.Session, 'get')
+    @patch.object(requests.Session, "get")
     def test_get_server_caches_result(self, mock_get, client):
         """Should cache server result."""
         mock_response = Mock()
         mock_response.json.return_value = {
             "status": "ok",
-            "data": {"servers": [{"name": "store1"}]}
+            "data": {"servers": [{"name": "store1"}]},
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
         client.get_server()
         client.get_server()
-        
+
         assert mock_get.call_count == 1
 
-    @patch.object(requests.Session, 'get')
+    @patch.object(requests.Session, "get")
     def test_get_server_failure(self, mock_get, client):
         """Should raise exception on API failure."""
         mock_response = Mock()
@@ -103,13 +103,13 @@ class TestGetServer:
         with pytest.raises(Exception):
             client.get_server()
 
-    @patch.object(requests.Session, 'get')
+    @patch.object(requests.Session, "get")
     def test_get_server_empty_servers(self, mock_get, client):
         """Should raise exception when no servers available."""
         mock_response = Mock()
         mock_response.json.return_value = {
             "status": "ok",
-            "data": {"servers": [{"name": ""}]}
+            "data": {"servers": [{"name": ""}]},
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -128,7 +128,9 @@ class TestSanitizeFilename:
 
     def test_special_characters(self, client):
         """Should replace special characters with underscores."""
-        assert client.sanitize_filename("file with spaces.txt") == "file_with_spaces.txt"
+        assert (
+            client.sanitize_filename("file with spaces.txt") == "file_with_spaces.txt"
+        )
         # Consecutive special chars get collapsed
         result = client.sanitize_filename("file@#$.txt")
         assert "@" not in result
@@ -218,82 +220,84 @@ class TestUploadFile:
         with pytest.raises(FileNotFoundError):
             client.upload_file("/nonexistent/file.txt")
 
-    @patch.object(GoFileClient, '_perform_upload')
+    @patch.object(GoFileClient, "_perform_upload")
     def test_successful_upload(self, mock_upload, client, temp_file):
         """Should return response data on successful upload."""
         mock_upload.return_value = {
             "downloadPage": "https://gofile.io/d/abc123",
             "id": "file123",
         }
-        
+
         result = client.upload_file(temp_file)
         assert "downloadPage" in result
 
-    @patch.object(GoFileClient, '_perform_upload')
+    @patch.object(GoFileClient, "_perform_upload")
     def test_upload_with_folder_id(self, mock_upload, client, temp_file):
         """Should pass folder_id to upload."""
         mock_upload.return_value = {"downloadPage": "link", "id": "123"}
-        
+
         client.upload_file(temp_file, folder_id="folder123")
         mock_upload.assert_called_once()
         call_args = mock_upload.call_args
         assert call_args[0][3] == "folder123"
 
-    @patch.object(GoFileClient, '_perform_upload')
+    @patch.object(GoFileClient, "_perform_upload")
     def test_upload_retries_on_transient_error(self, mock_upload, client, temp_file):
         """Should retry on transient errors."""
         mock_upload.side_effect = [
             requests.exceptions.ConnectionError(),
             {"downloadPage": "link", "id": "123"},
         ]
-        
+
         result = client.upload_file(temp_file)
         assert mock_upload.call_count == 2
         assert result["id"] == "123"
 
-    @patch.object(GoFileClient, '_perform_upload')
+    @patch.object(GoFileClient, "_perform_upload")
     def test_upload_fails_after_max_retries(self, mock_upload, client, temp_file):
         """Should fail after max retries exhausted."""
         client.max_retries = 2
         client.retry_delay = 0
         mock_upload.side_effect = requests.exceptions.ConnectionError()
-        
+
         with pytest.raises(requests.exceptions.ConnectionError):
             client.upload_file(temp_file)
-        
+
         assert mock_upload.call_count == 2
 
-    @patch.object(GoFileClient, '_perform_upload')
-    def test_upload_no_retry_on_non_retryable_error(self, mock_upload, client, temp_file):
+    @patch.object(GoFileClient, "_perform_upload")
+    def test_upload_no_retry_on_non_retryable_error(
+        self, mock_upload, client, temp_file
+    ):
         """Should not retry on non-retryable errors."""
         mock_upload.side_effect = ValueError("bad request")
-        
+
         with pytest.raises(ValueError):
             client.upload_file(temp_file)
-        
+
         assert mock_upload.call_count == 1
 
-    @patch.object(GoFileClient, '_perform_upload')
+    @patch.object(GoFileClient, "_perform_upload")
     def test_keyboard_interrupt_not_retried(self, mock_upload, client, temp_file):
         """Should not retry on KeyboardInterrupt."""
         mock_upload.side_effect = KeyboardInterrupt()
-        
+
         with pytest.raises(KeyboardInterrupt):
             client.upload_file(temp_file)
-        
+
         assert mock_upload.call_count == 1
 
 
 class TestCreateFolder:
     """Tests for folder creation."""
 
-    @patch.object(requests.Session, 'put')
+    @patch.object(requests.Session, "put")
     def test_create_folder_success(self, mock_put, client):
         """Should create folder successfully."""
         mock_response = Mock()
         mock_response.json.return_value = {
             "status": "ok",
-            "data": {"id": "folder123", "name": "test_folder"}
+            "data": {"id": "folder123", "name": "test_folder"},
         }
         mock_response.raise_for_status = Mock()
         mock_put.return_value = mock_response
@@ -301,23 +305,20 @@ class TestCreateFolder:
         result = client.create_folder("test_folder")
         assert result["id"] == "folder123"
 
-    @patch.object(requests.Session, 'put')
+    @patch.object(requests.Session, "put")
     def test_create_folder_with_parent(self, mock_put, client):
         """Should create folder with parent ID."""
         mock_response = Mock()
-        mock_response.json.return_value = {
-            "status": "ok",
-            "data": {"id": "folder123"}
-        }
+        mock_response.json.return_value = {"status": "ok", "data": {"id": "folder123"}}
         mock_response.raise_for_status = Mock()
         mock_put.return_value = mock_response
 
         client.create_folder("subfolder", parent_folder_id="parent123")
-        
+
         call_args = mock_put.call_args
         assert call_args[1]["json"]["parentFolderId"] == "parent123"
 
-    @patch.object(requests.Session, 'put')
+    @patch.object(requests.Session, "put")
     def test_create_folder_failure(self, mock_put, client):
         """Should raise exception on failure."""
         mock_response = Mock()
@@ -332,13 +333,13 @@ class TestCreateFolder:
 class TestCreateAccount:
     """Tests for guest account creation."""
 
-    @patch.object(requests.Session, 'get')
+    @patch.object(requests.Session, "get")
     def test_create_account_success(self, mock_get, client_no_token):
         """Should create guest account successfully."""
         mock_response = Mock()
         mock_response.json.return_value = {
             "status": "ok",
-            "data": {"token": "guest_token_123"}
+            "data": {"token": "guest_token_123"},
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -346,7 +347,7 @@ class TestCreateAccount:
         result = client_no_token.create_account()
         assert result["token"] == "guest_token_123"
 
-    @patch.object(requests.Session, 'get')
+    @patch.object(requests.Session, "get")
     def test_create_account_failure(self, mock_get, client_no_token):
         """Should raise exception on failure."""
         mock_response = Mock()
@@ -361,7 +362,7 @@ class TestCreateAccount:
 class TestDeleteContents:
     """Tests for content deletion."""
 
-    @patch.object(requests.Session, 'delete')
+    @patch.object(requests.Session, "delete")
     def test_delete_contents_success(self, mock_delete, client):
         """Should delete content successfully."""
         mock_response = Mock()
@@ -372,7 +373,7 @@ class TestDeleteContents:
         result = client.delete_contents("content123")
         assert result is True
 
-    @patch.object(requests.Session, 'delete')
+    @patch.object(requests.Session, "delete")
     def test_delete_contents_failure(self, mock_delete, client):
         """Should return False on failure."""
         mock_response = Mock()
@@ -389,7 +390,7 @@ class TestDeleteContents:
             client_no_token.delete_contents("content123")
         assert "Account token required" in str(exc_info.value)
 
-    @patch.object(requests.Session, 'delete')
+    @patch.object(requests.Session, "delete")
     def test_delete_contents_unauthorized(self, mock_delete, client):
         """Should raise exception on 401/403."""
         mock_response = Mock()
@@ -406,16 +407,13 @@ class TestDeleteContents:
 class TestGetFolderContent:
     """Tests for folder content retrieval."""
 
-    @patch.object(requests.Session, 'get')
+    @patch.object(requests.Session, "get")
     def test_get_folder_content_success(self, mock_get, client):
         """Should retrieve folder content successfully."""
         mock_response = Mock()
         mock_response.json.return_value = {
             "status": "ok",
-            "data": {
-                "id": "folder123",
-                "children": {"file1": {"name": "test.txt"}}
-            }
+            "data": {"id": "folder123", "children": {"file1": {"name": "test.txt"}}},
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -424,7 +422,7 @@ class TestGetFolderContent:
         assert result["id"] == "folder123"
         assert "children" in result
 
-    @patch.object(requests.Session, 'get')
+    @patch.object(requests.Session, "get")
     def test_get_folder_content_failure(self, mock_get, client):
         """Should raise exception on failure."""
         mock_response = Mock()

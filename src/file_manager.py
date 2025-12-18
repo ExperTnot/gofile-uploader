@@ -9,7 +9,7 @@ import logging
 import unicodedata
 from datetime import datetime, timedelta
 
-from .utils import print_dynamic_table, format_size, DAYS
+from src.utils import print_dynamic_table, format_size, DAYS
 
 # Get logger
 logger = logging.getLogger("gofile_uploader")
