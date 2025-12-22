@@ -182,6 +182,7 @@ def handle_upload_command(
 
     # Get guest account from database if available
     guest_account = db_manager.get_guest_account()
+    logger.debug(f"Using account token: {guest_account if guest_account else 'None (New Guest)'}")
 
     # Get folder ID for category if it exists
     folder_id = None

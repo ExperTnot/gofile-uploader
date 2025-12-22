@@ -51,7 +51,7 @@ def setup_logging(
 
     # Console handler - logs only important info to console
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO if verbose else logging.INFO)
+    console_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
     console_handler.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(console_handler)
 

@@ -162,6 +162,7 @@ class UploadService:
             start_time = datetime.now()
 
             # Upload the file to the specified folder (if any)
+            logger.debug(f"Uploading {file_path} to folder: {folder_id if folder_id else 'root'}")
             response_data = self.client.upload_file(file_path, folder_id=folder_id)
 
             # Calculate upload duration
