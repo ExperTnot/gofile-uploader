@@ -13,7 +13,7 @@ from .gofile_client import GoFileClient
 from .db_manager import DatabaseManager
 from .file_manager import list_files
 from .services import DeletionService, CategoryService, UploadService
-from .utils import print_info
+from .utils import print_info, confirm_action, print_success, print_warning
 
 logger = logging.getLogger("gofile_uploader")
 
@@ -226,3 +226,72 @@ def handle_upload_command(
         except Exception as e:
             # Error already logged in upload_service
             continue
+
+def handle_import_token_command(db_manager: DatabaseManager, token: str) -> None:
+    """
+    Handle the import account token command.
+
+    Args:
+        db_manager: Database manager instance
+        token: The account token to import
+    """
+    existing_token = db_manager.get_guest_account()
+
+    if existing_token:
+        print_warning(f"An account token already exists: {existing_token}")
+        print_info("If you overwrite it, make sure you have saved the old one if needed.")
+
+        if not confirm_action("Do you want to overwrite the existing token? (yes/no):", require_yes=True):
+            print_info("Import cancelled.")
+            return
+
+    if db_manager.save_guest_account(token):
+        print_success(f"Successfully imported account token: {token}")
+    else:
+        print_info("Failed to save the account token to the database.", prefix="ERROR")
+
+
+def handle_import_category_command(db_manager: DatabaseManager, category_data: str) -> None:
+    """
+    Handle the import category command.
+    Accepts pipe-separated values for a category, potentially multiple comma-separated.
+
+    Args:
+        db_manager: Database manager instance
+        category_data: String containing name|id|code (comma separated for multiple)
+    """
+    if not category_data:
+        print_info("No category data provided.", prefix="ERROR")
+        return
+
+    # Split by comma to handle multiple categories
+    category_list = [c.strip() for c in category_data.split(",")]
+
+    for category_str in category_list:
+        parts = [p.strip() for p in category_str.split("|")]
+        if len(parts) != 3:
+            print_warning(f"Invalid format for category entry: '{category_str}'. Expected 'name|folder_id|folder_code'.")
+            continue
+
+        name, folder_id, folder_code = parts
+        existing = db_manager.get_folder_by_category(name)
+
+        if existing:
+            print_warning(f"Category '{name}' already exists:")
+            print_info(f"  Old Folder ID: {existing.get('folder_id')}")
+            print_info(f"  Old Folder Code: {existing.get('folder_code')}")
+            print_info(f"  Created At: {existing.get('created_at')}")
+
+            if not confirm_action(f"Do you want to overwrite category '{name}'? (yes/no):", require_yes=True):
+                print_info(f"Skipping category '{name}'.")
+                continue
+
+        folder_info = {
+            "folder_id": folder_id,
+            "folder_code": folder_code,
+        }
+
+        if db_manager.save_folder_for_category(name, folder_info):
+            print_success(f"Successfully imported category '{name}': ID={folder_id}, Code={folder_code}")
+        else:
+            print_info(f"Failed to save category '{name}' to the database.", prefix="ERROR")

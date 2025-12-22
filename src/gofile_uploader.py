@@ -19,6 +19,8 @@ from .commands import (
     handle_clear_orphaned_command,
     handle_remove_category_command,
     handle_upload_command,
+    handle_import_token_command,
+    handle_import_category_command,
 )
 from .utils import DAYS
 
@@ -141,6 +143,19 @@ def _create_argument_parser() -> argparse.ArgumentParser:
         help="When used with -df, -pf, -rm and --clear, deletes the file entry only from local database without attempting remote deletion",
     )
 
+    # Account management
+    parser.add_argument(
+        "-it",
+        "--import-token",
+        help="Import a GoFile account token (replaces existing one, requires confirmation)",
+    )
+
+    parser.add_argument(
+        "-ic",
+        "--import-category",
+        help="Import category mapping(s) in format 'name|folder_id|folder_code' (comma separated for multiple, requires confirmation if exists)",
+    )
+
     return parser
 
 
@@ -189,6 +204,14 @@ def main():
     # Route to appropriate command handler
     if args.list:
         handle_list_categories_command(db_manager)
+        return
+
+    if args.import_token:
+        handle_import_token_command(db_manager, args.import_token)
+        return
+
+    if args.import_category:
+        handle_import_category_command(db_manager, args.import_category)
         return
 
     if args.purge_files:
