@@ -16,6 +16,9 @@ A Python program that uploads files to GoFile.io with progress tracking, logging
 - File tracking system with detailed upload history
 - Delete files from both GoFile servers and local database
 - Rotating log files with size management
+- Automatic retry on transient upload failures (network errors, server 5xx errors)
+- Dry-run mode to preview uploads without actually uploading
+- Exit codes for scripting integration
 
 > **Important Note**  
 > This tool works exclusively with temporary GoFile accounts which expire after a period of inactivity. Files uploaded using this tool will not be permanently stored and may become inaccessible after the temporary account expires. This tool is not intended for long-term file storage.
@@ -33,7 +36,7 @@ A Python program that uploads files to GoFile.io with progress tracking, logging
 - [x] Sortable file listings
 - [x] Pagination for large file listings
 - [x] Category removal and management
-- [ ] Automatic retry on failed uploads
+- [x] Automatic retry on failed uploads
 - [ ] Send expiration date notifications
 
 ## Requirements
@@ -125,6 +128,16 @@ python gofile-uploader.py --purge-files some_category --force  # Skip remote del
 # Clean up all file entries for deleted categories
 python gofile-uploader.py --clear
 python gofile-uploader.py --clear --force  # Skip remote deletion
+
+# Preview what would be uploaded without actually uploading (dry-run)
+python gofile-uploader.py --dry-run /path/to/files/*
+python gofile-uploader.py --dry-run -c MyCategory /path/to/files/*
+
+# Reset guest account (useful if uploads fail with 500 errors)
+python gofile-uploader.py --reset-account
+
+# Check version
+python gofile-uploader.py --version
 ```
 
 ## Configuration
@@ -227,20 +240,6 @@ For each uploaded file, the following information is stored in the database:
 - Guest account ID
 
 This tracking allows you to maintain a complete history of all uploads and easily retrieve file information later.
-
-## Synchronizing Between Devices
-
-The program's data (categories and account token) is stored locally in `db/gofile.db` and `gofile_config.json`. These files are excluded from Git by default. To sync between devices:
-
-1.  **Manual Copy:** Copy the `db/` folder and `gofile_config.json` to the new device.
-2.  **Import Commands:** Use the built-in import flags if you have the details:
-    *   `python gofile-uploader.py -it TOKEN` to import your account token.
-    *   `python gofile-uploader.py -ic "name|id|code"` to import a category mapping.
-
-## Usage Tips
-
-- **Explicit Categories:** You must always specify the `-c` flag (e.g., `-c MyCategory`) if you want to upload to a specific folder. If you omit `-c`, the uploader will create a new folder by default.
-- **Verbose Output:** Use `-v` or `--verbose` to see detailed information during uploads, including the account token and folder IDs being used.
 
 ## License
 

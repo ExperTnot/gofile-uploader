@@ -5,15 +5,22 @@ GoFile.io API client.
 
 import os
 import re
+import time
 import requests
 import urllib.parse
 from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
 from typing import Dict, Any, Optional
 import mimetypes
-from .utils import upload_with_progress, format_time, BLUE, END
-from .logging_utils import get_logger
+from src.utils import format_time, format_size, format_speed, BLUE, END
+from tqdm import tqdm
+from src.logging_utils import get_logger
 
 logger = get_logger(__name__)
+
+# Constants for retry logic
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_RETRY_DELAY = 2  # seconds
+DEFAULT_TIMEOUT = 30  # seconds for API calls (not uploads)
 
 
 class GoFileClient:
@@ -22,16 +29,28 @@ class GoFileClient:
     BASE_URL = "https://api.gofile.io"
     GLOBAL_UPLOAD_URL = "https://upload.gofile.io/uploadfile"
 
-    def __init__(self, account_token: Optional[str] = None):
+    def __init__(
+        self,
+        account_token: Optional[str] = None,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        retry_delay: int = DEFAULT_RETRY_DELAY,
+        timeout: int = DEFAULT_TIMEOUT,
+    ):
         """
         Initialize the GoFile client.
 
         Args:
             account_token: Optional API token for authenticated requests
+            max_retries: Maximum number of retry attempts for failed uploads
+            retry_delay: Delay in seconds between retry attempts
+            timeout: Timeout in seconds for API calls (not uploads)
         """
         self.session = requests.Session()
         self.account_token = account_token
         self._current_server = None
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self.timeout = timeout
 
     def get_server(self) -> str:
         """
@@ -40,7 +59,6 @@ class GoFileClient:
         Returns:
             str: The best server for uploading.
         """
-        # Use cached server if available
         if self._current_server:
             return self._current_server
 
@@ -50,7 +68,6 @@ class GoFileClient:
             data = response.json()
 
             if data.get("status") == "ok":
-                # Get the first server from the servers list
                 server = data.get("data", {}).get("servers", [])[0].get("name", "")
                 if not server:
                     logger.error("No valid server found in response")
@@ -79,7 +96,6 @@ class GoFileClient:
             Dict with folder information including ID
         """
         if not self.account_token:
-            # Create a guest account if we don't have a token
             account_data = self.create_account()
             self.account_token = account_data.get("token")
             logger.info(f"Created guest account with token: {self.account_token}")
@@ -141,37 +157,54 @@ class GoFileClient:
         Returns:
             Sanitized filename
         """
-        # Log the original filename for debugging
         logger.debug(f"Original filename: {filename}")
-
-        # First, URL encode the filename to handle special characters
         url_encoded = urllib.parse.quote(filename)
-
-        # Replace problematic characters with underscores
-        # Keep alphanumeric, periods, hyphens, and underscores
         sanitized = re.sub(r"[^\w\-\.]", "_", filename)
-
-        # Make sure we don't have too many consecutive special chars
         sanitized = re.sub(r"[_\-\.]{2,}", "_", sanitized)
-
-        # Save the URL-encoded version for potential API usage
         self._last_encoded_filename = url_encoded
 
-        # If the name became empty, provide a default
         if not sanitized or sanitized == ".":
             sanitized = "file"
 
-        # If filename changed, log it
         if sanitized != filename:
             logger.debug(f"Sanitized filename from '{filename}' to '{sanitized}'")
 
         return sanitized
 
+    def _is_retryable_error(self, exception: Exception) -> bool:
+        """
+        Determine if an error is retryable.
+
+        Args:
+            exception: The exception that occurred
+
+        Returns:
+            bool: True if the error is retryable, False otherwise
+        """
+        if isinstance(
+            exception,
+            (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                requests.exceptions.ChunkedEncodingError,
+            ),
+        ):
+            return True
+
+        if isinstance(exception, requests.exceptions.HTTPError):
+            if (
+                exception.response is not None
+                and 500 <= exception.response.status_code < 600
+            ):
+                return True
+
+        return False
+
     def upload_file(
         self, file_path: str, folder_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Upload a file to GoFile.io.
+        Upload a file to GoFile.io with automatic retry on transient failures.
 
         Args:
             file_path: Path to the file to upload
@@ -179,118 +212,140 @@ class GoFileClient:
 
         Returns:
             Dict[str, Any]: The response data containing the download link
+
+        Raises:
+            FileNotFoundError: If the file does not exist
+            Exception: If upload fails after all retries
         """
         if not os.path.exists(file_path):
             logger.error(f"File not found: {file_path}")
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        try:
-            # Using the global upload endpoint which works better for folder management
-            url = self.GLOBAL_UPLOAD_URL
-            original_file_name = os.path.basename(file_path)
+        url = self.GLOBAL_UPLOAD_URL
+        original_file_name = os.path.basename(file_path)
+        file_name = self.sanitize_filename(original_file_name)
 
-            # Sanitize the filename for upload
-            file_name = self.sanitize_filename(original_file_name)
+        last_exception = None
 
-            # Define the upload function to work with proper progress tracking
-            def perform_upload(
-                file_obj, filename, form_data, chunk_size, progress_callback
-            ):
-                # Add required parameters to form_data
-                if self.account_token:
-                    form_data["token"] = self.account_token
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                return self._perform_upload(file_path, file_name, url, folder_id)
+            except KeyboardInterrupt:
+                # Don't retry on user interrupt
+                raise
+            except Exception as e:
+                last_exception = e
 
-                if folder_id:
-                    form_data["folderId"] = folder_id
+                if not self._is_retryable_error(e):
+                    # Non-retryable error, fail immediately
+                    logger.error(f"Upload failed (non-retryable): {e}")
+                    raise
 
-                # Create session for connection pooling
-                session = requests.Session()
-
-                # Get MIME type using Python's built-in mimetypes
-                mime_type, _ = mimetypes.guess_type(filename)
-                mime_type = mime_type or "application/octet-stream"
-
-                logger.debug(f"Using MIME type {mime_type} for file {filename}")
-
-                # Create the multipart form data with the file
-                encoder = MultipartEncoder(
-                    fields={**form_data, "file": (filename, file_obj, mime_type)}
-                )
-
-                # Define a callback that will be invoked as upload progresses
-                def progress_monitor_callback(monitor):
-                    # This is called with the actual bytes uploaded to the server
-                    progress_callback(monitor.bytes_read)
-
-                # Create a monitor that will track actual upload progress
-                monitor = MultipartEncoderMonitor(encoder, progress_monitor_callback)
-
-                # Make the POST request with progress monitoring
-                try:
-                    response = session.post(
-                        url,
-                        data=monitor,  # Use the monitor instead of the encoder directly
-                        headers={"Content-Type": monitor.content_type},
+                if attempt < self.max_retries:
+                    logger.warning(
+                        f"Upload attempt {attempt}/{self.max_retries} failed: {e}. "
+                        f"Retrying in {self.retry_delay}s..."
+                    )
+                    time.sleep(self.retry_delay)
+                else:
+                    logger.error(
+                        f"Upload failed after {self.max_retries} attempts: {e}"
                     )
 
-                    # Check for errors
-                    response.raise_for_status()
+        # All retries exhausted
+        if last_exception:
+            raise last_exception
+        raise Exception("Upload failed after all retries")
 
-                    # Return the response JSON
-                    return response.json()
+    def _perform_upload(
+        self, file_path: str, file_name: str, url: str, folder_id: Optional[str]
+    ) -> Dict[str, Any]:
+        """
+        Internal method to perform the actual upload with progress tracking.
+        """
+        file_size = os.path.getsize(file_path)
+        start_time = time.time()
 
-                except KeyboardInterrupt:
-                    # Catch interrupt here to cancel the request
-                    session.close()
-                    raise
-                except Exception:
-                    # Log the error and rethrow
-                    session.close()
-                    raise
+        form_data = {}
+        if self.account_token:
+            form_data["token"] = self.account_token
+        if folder_id:
+            form_data["folderId"] = folder_id
 
-            # Upload the file with progress tracking
-            upload_result = upload_with_progress(file_path, perform_upload)
-            data = upload_result["result"]
+        mime_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
+        logger.debug(f"Using MIME type {mime_type} for file {file_name}")
 
-            # Check the response status
-            if data.get("status") == "ok":
-                # Get the download page URL and file info from the response
-                response_data = data.get("data", {})
-                download_page = response_data.get("downloadPage", "")
-                file_id = response_data.get("fileId", "") or response_data.get(
-                    "code", ""
+        with open(file_path, "rb") as file_obj:
+            encoder = MultipartEncoder(
+                fields={**form_data, "file": (file_name, file_obj, mime_type)}
+            )
+
+            with tqdm(
+                total=file_size,
+                unit="B",
+                unit_scale=True,
+                unit_divisor=1024,
+                desc=f"↑ {file_name}",
+                bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]{postfix}",
+            ) as pbar:
+                last_bytes = [0]
+
+                def on_progress(monitor):
+                    delta = monitor.bytes_read - last_bytes[0]
+                    if delta > 0:
+                        pbar.update(delta)
+                        last_bytes[0] = monitor.bytes_read
+                        elapsed = time.time() - start_time
+                        if elapsed > 0:
+                            pbar.set_postfix_str(
+                                format_speed(monitor.bytes_read / elapsed)
+                            )
+
+                monitor = MultipartEncoderMonitor(encoder, on_progress)
+
+                response = self.session.post(
+                    url,
+                    data=monitor,
+                    headers={"Content-Type": monitor.content_type},
                 )
-                folder_id = response_data.get("parentFolder", "")
+                response.raise_for_status()
 
-                # Log the successful upload
-                human_readable_time = format_time(upload_result["elapsed_time"])
-                print(
-                    f"Successfully uploaded {file_name} ({upload_result['file_size_formatted']}) in "
-                    f"{human_readable_time} at {upload_result['speed_formatted']}"
-                )
-                print(f"Download link: {BLUE}{download_page}{END}")
+                if pbar.n < file_size:
+                    pbar.update(file_size - pbar.n)
 
-                # Add additional information to the result
-                response_data["file_id"] = file_id
-                response_data["folder_id"] = folder_id
-                response_data["file_size_formatted"] = upload_result[
-                    "file_size_formatted"
-                ]
-                response_data["speed_formatted"] = upload_result["speed_formatted"]
-                response_data["file_name"] = file_name
+        elapsed_time = time.time() - start_time
+        speed = file_size / elapsed_time if elapsed_time > 0 else 0
+        data = response.json()
 
-                # Extract account ID if available (for guest uploads)
-                if "accountId" in response_data and not self.account_token:
-                    logger.info(f"Guest account ID: {response_data['accountId']}")
-                    response_data["account_id"] = response_data["accountId"]
+        if data.get("status") != "ok":
+            error_msg = f"Upload failed: {data.get('status')}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
 
-                return response_data
-            else:
-                logger.error(f"Upload failed: {data.get('status')}")
-                raise Exception(f"Upload failed: {data.get('status')}")
-        except Exception as e:
-            logger.error(f"Error uploading file: {str(e)}")
-            raise
+        response_data = data.get("data", {})
+        download_page = response_data.get("downloadPage", "")
+        file_id = response_data.get("fileId", "") or response_data.get("code", "")
+        returned_folder_id = response_data.get("parentFolder", "")
+
+        file_size_fmt = format_size(file_size)
+        speed_fmt = format_speed(speed)
+        print(
+            f"Successfully uploaded {file_name} ({file_size_fmt}) in "
+            f"{format_time(elapsed_time)} at {speed_fmt}"
+        )
+        print(f"Download link: {BLUE}{download_page}{END}")
+
+        response_data["file_id"] = file_id
+        response_data["folder_id"] = returned_folder_id
+        response_data["file_size_formatted"] = file_size_fmt
+        response_data["speed_formatted"] = speed_fmt
+        response_data["file_name"] = file_name
+
+        if "accountId" in response_data and not self.account_token:
+            logger.info(f"Guest account ID: {response_data['accountId']}")
+            response_data["account_id"] = response_data["accountId"]
+
+        return response_data
 
     def get_folder_content(self, folder_id: str) -> Dict[str, Any]:
         """
@@ -345,7 +400,6 @@ class GoFileClient:
                 "Content-Type": "application/json",
             }
 
-            # Prepare request body with contentsId parameter
             data = {"contentsId": contents_id}
 
             response = self.session.delete(

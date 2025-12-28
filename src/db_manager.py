@@ -6,8 +6,8 @@ Database manager for storing and retrieving folder information using SQLite3.
 import sqlite3
 import sys
 from datetime import datetime
-from typing import Dict, Optional, List
-from .logging_utils import get_logger
+from typing import Dict, Optional, List, Union
+from src.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
@@ -210,6 +210,26 @@ class DatabaseManager:
             logger.error(f"Error saving guest account: {str(e)}")
             return False
 
+    def clear_guest_account(self) -> bool:
+        """
+        Clear the stored guest account token.
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM settings WHERE key = 'guest_account'")
+            self.conn.commit()
+            if cursor.rowcount > 0:
+                logger.info("Cleared guest account token")
+                return True
+            logger.debug("No guest account token was stored")
+            return False
+        except sqlite3.Error as e:
+            logger.error(f"Error clearing guest account: {str(e)}")
+            return False
+
     def remove_category(self, category: str) -> bool:
         """
         Remove a category from the database.
@@ -273,7 +293,9 @@ class DatabaseManager:
             logger.error(f"Error getting categories info: {str(e)}")
             return []
 
-    def save_file_info(self, file_info: Dict[str, any]) -> bool:
+    def save_file_info(
+        self, file_info: Dict[str, Union[str, int, float, None]]
+    ) -> bool:
         """
         Save information about an uploaded file.
 
@@ -325,7 +347,9 @@ class DatabaseManager:
             logger.error(f"Error saving file information: {str(e)}")
             return False
 
-    def get_files_by_category(self, category: str) -> List[Dict[str, any]]:
+    def get_files_by_category(
+        self, category: str
+    ) -> List[Dict[str, Union[str, int, float, None]]]:
         """
         Get all files uploaded to a specific category.
 
@@ -341,7 +365,7 @@ class DatabaseManager:
 
         return self._get_files_with_filter("category = ?", (category,))
 
-    def get_all_files(self) -> List[Dict[str, any]]:
+    def get_all_files(self) -> List[Dict[str, Union[str, int, float, None]]]:
         """
         Get all uploaded files.
 
@@ -350,7 +374,9 @@ class DatabaseManager:
         """
         return self._get_files_with_filter()
 
-    def get_file_by_id(self, file_id: str) -> Optional[Dict[str, any]]:
+    def get_file_by_id(
+        self, file_id: str
+    ) -> Optional[Dict[str, Union[str, int, float, None]]]:
         """
         Get a file by its ID.
 
@@ -427,8 +453,8 @@ class DatabaseManager:
             return 0
 
     def _get_files_with_filter(
-        self, where_clause: str = None, params: tuple = None
-    ) -> List[Dict[str, any]]:
+        self, where_clause: Optional[str] = None, params: Optional[tuple] = None
+    ) -> List[Dict[str, Union[str, int, float, None]]]:
         """
         Internal method to get files with optional filtering.
 
@@ -477,7 +503,7 @@ class DatabaseManager:
             logger.error(f"Error getting files: {str(e)}")
             return []
 
-    def get_file_count(self, category: str = None) -> int:
+    def get_file_count(self, category: Optional[str] = None) -> int:
         """
         Get the count of files, optionally filtered by category.
 
