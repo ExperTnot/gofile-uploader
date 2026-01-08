@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gofile-uploader"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Upload files to GoFile.io with progress tracking, category management, and SQLite-based file tracking"
 readme = "README.md"
 license = {text = "MIT"}
@@ -51,6 +51,9 @@ Issues = "https://github.com/YOUR_USERNAME/gofile-uploader/issues"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "src.__version__"}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

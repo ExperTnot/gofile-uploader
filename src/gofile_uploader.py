@@ -40,7 +40,7 @@ EXIT_SUCCESS = 0
 EXIT_ERROR = 1
 EXIT_USAGE = 2
 
-__version__ = "0.1.0"
+from src import __version__
 
 
 def handle_file_deletion(db_manager, file_id_or_name, force=False, auto_confirm=False):
