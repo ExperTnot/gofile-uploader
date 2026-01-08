@@ -23,6 +23,7 @@ from .commands import (
     handle_import_category_command,
 )
 from .utils import DAYS
+from . import __version__
 
 # Get logger for this module
 logger = get_logger(__name__)
@@ -36,8 +37,12 @@ def _create_argument_parser() -> argparse.ArgumentParser:
         Configured ArgumentParser instance
     """
     parser = argparse.ArgumentParser(
+        prog="gofile-uploader",
         description="Upload files to GoFile.io with category management for free Gofile accounts",
         epilog=f"NOTE: This tool works with free Gofile accounts only. Due to API limitations, file records are stored locally rather than retrieved from Gofile servers. Files on Gofile.io will expire after {DAYS} days in free accounts.",
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
     )
 
     # File upload arguments

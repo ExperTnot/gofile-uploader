@@ -11,12 +11,12 @@ from logging.handlers import RotatingFileHandler
 
 
 def setup_logging(
-    log_folder=".",
-    log_basename="gofile",
-    max_bytes=5 * 1024 * 1024,
-    backup_count=10,
-    verbose=False,
-):
+    log_folder: str = ".",
+    log_basename: str = "gofile",
+    max_bytes: int = 5 * 1024 * 1024,
+    backup_count: int = 10,
+    verbose: bool = False,
+) -> logging.Logger:
     """
     Configure a rotating file logger with console output.
 
@@ -30,14 +30,10 @@ def setup_logging(
     Returns:
         The configured root logger
     """
-    # Root logger configuration
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
 
-    # Clear existing handlers to avoid duplication
     logger.handlers = []
-
-    # Rotating file handler - logs everything to file with rotation
 
     log_file = os.path.join(log_folder, f"{log_basename}_0.log")
     file_handler = RotatingFileHandler(
@@ -49,16 +45,15 @@ def setup_logging(
     )
     logger.addHandler(file_handler)
 
-    # Console handler - logs only important info to console
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO if verbose else logging.INFO)
-    console_handler.setFormatter(logging.Formatter("%(message)s"))
+    console_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
+    console_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
     logger.addHandler(console_handler)
 
     return logger
 
 
-def get_logger(name):
+def get_logger(name: str) -> logging.Logger:
     """
     Get a named logger.
 
