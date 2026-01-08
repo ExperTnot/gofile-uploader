@@ -18,7 +18,7 @@ class TestVersionFlag:
     def test_version_flag(self, capsys):
         """Should print version and exit."""
         with pytest.raises(SystemExit) as exc_info:
-            with patch.object(sys, 'argv', ['gofile-uploader', '--version']):
+            with patch.object(sys, "argv", ["gofile-uploader", "--version"]):
                 main()
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
@@ -31,31 +31,33 @@ class TestHelpFlag:
     def test_help_flag(self, capsys):
         """Should print help and exit."""
         with pytest.raises(SystemExit) as exc_info:
-            with patch.object(sys, 'argv', ['gofile-uploader', '--help']):
+            with patch.object(sys, "argv", ["gofile-uploader", "--help"]):
                 main()
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
-        assert 'usage:' in captured.out.lower()
+        assert "usage:" in captured.out.lower()
 
 
 class TestListCategories:
     """Tests for -l flag."""
 
-    @patch('src.gofile_uploader.DatabaseManager')
-    @patch('src.gofile_uploader.setup_logging')
+    @patch("src.gofile_uploader.DatabaseManager")
+    @patch("src.gofile_uploader.setup_logging")
     def test_list_categories_with_data(self, mock_logging, mock_db_class, capsys):
         """Should list categories when data exists."""
         mock_db = MagicMock()
-        mock_db.get_categories_info.return_value = [{'name': 'TestCategory', 'folder_code': 'abc123'}]
+        mock_db.get_categories_info.return_value = [
+            {"name": "TestCategory", "folder_code": "abc123"}
+        ]
         mock_db_class.return_value = mock_db
 
-        with patch.object(sys, 'argv', ['gofile-uploader', '-l']):
+        with patch.object(sys, "argv", ["gofile-uploader", "-l"]):
             result = main()
 
         # Function returns None on success for list operation
         assert result is None or result == 0
         captured = capsys.readouterr()
-        assert 'TestCategory' in captured.out
+        assert "TestCategory" in captured.out
 
 
 class TestNoArguments:
@@ -63,9 +65,13 @@ class TestNoArguments:
 
     def test_no_arguments_shows_help(self, capsys):
         """Should show usage when no arguments provided."""
-        with patch.object(sys, 'argv', ['gofile-uploader']):
+        with patch.object(sys, "argv", ["gofile-uploader"]):
             result = main()
 
         captured = capsys.readouterr()
         # Either shows help or returns error
-        assert result != 0 or 'usage' in captured.out.lower() or 'usage' in captured.err.lower()
+        assert (
+            result != 0
+            or "usage" in captured.out.lower()
+            or "usage" in captured.err.lower()
+        )

@@ -227,6 +227,7 @@ def handle_upload_command(
             # Error already logged in upload_service
             continue
 
+
 def handle_import_token_command(db_manager: DatabaseManager, token: str) -> None:
     """
     Handle the import account token command.
@@ -239,9 +240,13 @@ def handle_import_token_command(db_manager: DatabaseManager, token: str) -> None
 
     if existing_token:
         print_warning(f"An account token already exists: {existing_token}")
-        print_info("If you overwrite it, make sure you have saved the old one if needed.")
+        print_info(
+            "If you overwrite it, make sure you have saved the old one if needed."
+        )
 
-        if not confirm_action("Do you want to overwrite the existing token? (yes/no):", require_yes=True):
+        if not confirm_action(
+            "Do you want to overwrite the existing token? (yes/no):", require_yes=True
+        ):
             print_info("Import cancelled.")
             return
 
@@ -251,7 +256,9 @@ def handle_import_token_command(db_manager: DatabaseManager, token: str) -> None
         print_info("Failed to save the account token to the database.", prefix="ERROR")
 
 
-def handle_import_category_command(db_manager: DatabaseManager, category_data: str) -> None:
+def handle_import_category_command(
+    db_manager: DatabaseManager, category_data: str
+) -> None:
     """
     Handle the import category command.
     Accepts pipe-separated values for a category, potentially multiple comma-separated.
@@ -270,7 +277,9 @@ def handle_import_category_command(db_manager: DatabaseManager, category_data: s
     for category_str in category_list:
         parts = [p.strip() for p in category_str.split("|")]
         if len(parts) != 3:
-            print_warning(f"Invalid format for category entry: '{category_str}'. Expected 'name|folder_id|folder_code'.")
+            print_warning(
+                f"Invalid format for category entry: '{category_str}'. Expected 'name|folder_id|folder_code'."
+            )
             continue
 
         name, folder_id, folder_code = parts
@@ -282,7 +291,10 @@ def handle_import_category_command(db_manager: DatabaseManager, category_data: s
             print_info(f"  Old Folder Code: {existing.get('folder_code')}")
             print_info(f"  Created At: {existing.get('created_at')}")
 
-            if not confirm_action(f"Do you want to overwrite category '{name}'? (yes/no):", require_yes=True):
+            if not confirm_action(
+                f"Do you want to overwrite category '{name}'? (yes/no):",
+                require_yes=True,
+            ):
                 print_info(f"Skipping category '{name}'.")
                 continue
 
@@ -292,6 +304,10 @@ def handle_import_category_command(db_manager: DatabaseManager, category_data: s
         }
 
         if db_manager.save_folder_for_category(name, folder_info):
-            print_success(f"Successfully imported category '{name}': ID={folder_id}, Code={folder_code}")
+            print_success(
+                f"Successfully imported category '{name}': ID={folder_id}, Code={folder_code}"
+            )
         else:
-            print_info(f"Failed to save category '{name}' to the database.", prefix="ERROR")
+            print_info(
+                f"Failed to save category '{name}' to the database.", prefix="ERROR"
+            )
