@@ -51,93 +51,100 @@ A Python program that uploads files to GoFile.io with progress tracking, logging
 
 ## Installation
 
-1. Clone or download this repository
-2. Install the required packages:
+### From PyPI (recommended)
 
 ```bash
-pip install -r requirements.txt
+pip install gofile-uploader
+```
+
+### From source
+
+```bash
+git clone https://github.com/YOUR_USERNAME/gofile-uploader.git
+cd gofile-uploader
+pip install -e .
 ```
 
 ## Usage
 
 ```bash
 # Upload a single file
-python gofile-uploader.py /path/to/your/file.ext
+gofile-uploader /path/to/your/file.ext
 
 # Upload multiple files
-python gofile-uploader.py /path/to/file1.ext /path/to/file2.ext
+gofile-uploader /path/to/file1.ext /path/to/file2.ext
 
 # Upload files to a specific category (folder)
-python gofile-uploader.py -c Photos /path/to/photo1.jpg /path/to/photo2.jpg
+gofile-uploader -c Photos /path/to/photo1.jpg /path/to/photo2.jpg
 
 # Upload files to a specific category (folder) using glob patterns
-python gofile-uploader.py -c Photos /path/to/photo*.jpg
+gofile-uploader -c Photos /path/to/photo*.jpg
 
 # Upload files to a specific category (folder) using partial category name
-python gofile-uploader.py -c P* /path/to/photo.jpg # This will try to automatically resolve the category name
+gofile-uploader -c P* /path/to/photo.jpg # This will try to automatically resolve the category name
 
 # List all available categories and their folder links
-python gofile-uploader.py -l
+gofile-uploader -l
 
 # Suppress summary output
-python gofile-uploader.py -q /path/to/your/file.ext
+gofile-uploader -q /path/to/your/file.ext
 
 # List all uploaded files (now with expiry date information)
-python gofile-uploader.py -lf
+gofile-uploader -lf
 
 # List files from a specific category
-python gofile-uploader.py -lf Photos
+gofile-uploader -lf Photos
 
 # Control filename display width
-python gofile-uploader.py -lf -mfn       # Limit filenames to 80 characters
-python gofile-uploader.py -lf -mfn 50    # Limit filenames to 50 characters
+gofile-uploader -lf -mfn       # Limit filenames to 80 characters
+gofile-uploader -lf -mfn 50    # Limit filenames to 50 characters
 
 # Pagination for large file listings
-python gofile-uploader.py -lf -p 2       # View second page of results
+gofile-uploader -lf -p 2       # View second page of results
 
 # Upload directory contents recursively
-python gofile-uploader.py -c MyFiles -r /path/to/directory  # Upload all files in directory and subdirectories
+gofile-uploader -c MyFiles -r /path/to/directory  # Upload all files in directory and subdirectories
 
 # Sort file listings by various criteria
-python gofile-uploader.py -lf -s name     # Sort by on of name, size, date, expiry, category, link
+gofile-uploader -lf -s name     # Sort by on of name, size, date, expiry, category, link
 
 # Change sort order (default is ascending)
-python gofile-uploader.py -lf -s size -o desc  # Sort by size in descending order
+gofile-uploader -lf -s size -o desc  # Sort by size in descending order
 
 # Select specific columns to display
-python gofile-uploader.py -lf -col id,name,size      # Show only ID, filename and size
+gofile-uploader -lf -col id,name,size      # Show only ID, filename and size
 
 # Combine options
-python gofile-uploader.py -lf -s date -o desc -p 2 -mfn 50  # Sort by date, page 2, 50-char filenames
+gofile-uploader -lf -s date -o desc -p 2 -mfn 50  # Sort by date, page 2, 50-char filenames
 
 # Delete a file from both GoFile server and local database
-python gofile-uploader.py -df filename.ext   # Delete by filename
-python gofile-uploader.py -df 1              # Delete by serial ID
-python gofile-uploader.py -df abc123-456...  # Delete by file ID
+gofile-uploader -df filename.ext   # Delete by filename
+gofile-uploader -df 1              # Delete by serial ID
+gofile-uploader -df abc123-456...  # Delete by file ID
 
 # -rm, -dl, -pf and --clear can all use --force to skip remote deletion
 
 # Remove a category (with confirmation and option to delete its files)
 # This does not remove files from GoFile or the database, just the category entry
-python gofile-uploader.py -rm some_category  # Supports wildcard matching (e.g. Test*)
+gofile-uploader -rm some_category  # Supports wildcard matching (e.g. Test*)
 
 # Delete all files for a category (even if category was already removed)
-python gofile-uploader.py --purge-files some_category  # Supports wildcard matching (e.g. Test*)
-python gofile-uploader.py --purge-files some_category --force  # Skip remote deletion
+gofile-uploader --purge-files some_category  # Supports wildcard matching (e.g. Test*)
+gofile-uploader --purge-files some_category --force  # Skip remote deletion
 
 # Clean up all file entries for deleted categories
-python gofile-uploader.py --clear
-python gofile-uploader.py --clear --force  # Skip remote deletion
+gofile-uploader --clear
+gofile-uploader --clear --force  # Skip remote deletion
 
 # Preview what would be uploaded without actually uploading (dry-run)
-python gofile-uploader.py --dry-run /path/to/files/*
-python gofile-uploader.py --dry-run -c MyCategory /path/to/files/*
+gofile-uploader --dry-run /path/to/files/*
+gofile-uploader --dry-run -c MyCategory /path/to/files/*
 
 # Reset guest account (useful if uploads fail with 500 errors)
-python gofile-uploader.py --reset-account
+gofile-uploader --reset-account
 
 # Check version
-python gofile-uploader.py --version
+gofile-uploader --version
 ```
 
 ## Configuration
@@ -243,4 +250,4 @@ This tracking allows you to maintain a complete history of all uploads and easil
 
 ## License
 
-This project is open-source and free to use.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
