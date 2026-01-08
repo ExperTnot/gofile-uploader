@@ -7,7 +7,7 @@ name = "gofile-uploader"
 dynamic = ["version"]
 description = "Upload files to GoFile.io with progress tracking, category management, and SQLite-based file tracking"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 requires-python = ">=3.9"
 authors = [
     {name = "GoFile Uploader Contributors"}
@@ -18,7 +18,6 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
