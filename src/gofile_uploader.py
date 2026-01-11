@@ -33,6 +33,8 @@ from src.utils import (
     print_file_list_summary,
     print_confirmation_message,
 )
+from .utils import DAYS
+from . import __version__
 
 logger = get_logger(__name__)
 
@@ -84,6 +86,8 @@ def handle_file_deletion(db_manager, file_id_or_name, force=False, auto_confirm=
             logger.info("Deletion cancelled.")
             return False
 
+        download_link = ""
+        account_id = ""
         try:
             download_link = file_data.get("download_link", "")
             account_id = file_data.get("account_id", "")
@@ -406,14 +410,15 @@ def remove_category(db_manager, category_pattern, force=False):
 def main():
     """Main function to handle command line arguments and start the upload."""
     parser = argparse.ArgumentParser(
+        prog="gofile-uploader",
         description="Upload files to GoFile.io with category management for free Gofile accounts",
         epilog=f"NOTE: This tool works with free Gofile accounts only. Due to API limitations, file records are stored locally rather than retrieved from Gofile servers. Files on Gofile.io will expire after {DAYS} days in free accounts.",
     )
     parser.add_argument(
-        "--version",
-        action="version",
-        version=f"%(prog)s {__version__}",
+        "--version", action="version", version=f"%(prog)s {__version__}"
     )
+
+    # File upload arguments
     parser.add_argument("files", nargs="*", help="Path to file(s) you want to upload")
     parser.add_argument(
         "-c",
@@ -486,8 +491,8 @@ def main():
         "--max-filename",
         nargs="?",
         type=int,
-        const=80,  # Default when flag is used without value
-        default=None,  # Default when flag is not used at all
+        const=80,
+        default=None,
         help="Maximum filename width in characters (default: no limit, 80 if flag is used without value)",
     )
     parser.add_argument(
